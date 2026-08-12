@@ -233,6 +233,11 @@ async function getVideoDuration(input: Buffer | string | Readable): Promise<numb
   return Math.round(parseFloat(duration));
 }
 
+type XmacnaConnectState = { lastStartedAt: number; promise?: Promise<WASocket> };
+const xmacnaConnectStates: Map<string, XmacnaConnectState> =
+  (globalThis as any).__xmacnaEvolutionConnectStates ||
+  ((globalThis as any).__xmacnaEvolutionConnectStates = new Map<string, XmacnaConnectState>());
+
 export class BaileysStartupService extends ChannelStartupService {
   private messageProcessor = new BaileysMessageProcessor();
   private readonly inboundInbox: PrismaInboundInbox;
@@ -737,35 +742,46 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async connectToWhatsapp(number?: string): Promise<WASocket> {
+    const stateKey = normalizeInstanceScope(this.instance.name);
+    const state = xmacnaConnectStates.get(stateKey) || { lastStartedAt: 0 };
+    xmacnaConnectStates.set(stateKey, state);
+    if (state.promise) {
+      this.logger.info('XMACNA_PATCH_DEBOUNCE: coalescing concurrent connectToWhatsapp caller');
+      return state.promise;
+    }
+    const connectPromise = this.connectToWhatsappOnce(number, state);
+    state.promise = connectPromise;
     try {
-      this.loadChatwoot();
-      this.loadSettings();
-      this.loadWebhook();
-      this.loadProxy();
-
-      // Remontar o messageProcessor para garantir que está funcionando após reconexão
-      this.messageProcessor.mount({
-        onMessageReceive: this.messageHandle['messages.upsert'].bind(this),
-      });
-
-      const client = await this.createClient(number);
-      this.startInboundInboxWorker();
-      return client;
+      return await connectPromise;
     } catch (error) {
       this.logger.error(error);
       throw new InternalServerErrorException(error?.toString());
+    } finally {
+      if (state.promise === connectPromise) state.promise = undefined;
     }
   }
 
-  public async reloadConnection(): Promise<WASocket> {
-    try {
-      const client = await this.createClient(this.phoneNumber);
-      this.startInboundInboxWorker();
-      return client;
-    } catch (error) {
-      this.logger.error(error);
-      throw new InternalServerErrorException(error?.toString());
+  private async connectToWhatsappOnce(number: string | undefined, state: XmacnaConnectState): Promise<WASocket> {
+    const waitMs = Math.max(0, 10_000 - (Date.now() - state.lastStartedAt));
+    if (waitMs > 0) {
+      this.logger.info(`XMACNA_PATCH_DEBOUNCE: delaying reconnect by ${waitMs}ms`);
+      await delay(waitMs);
     }
+    state.lastStartedAt = Date.now();
+    this.loadChatwoot();
+    this.loadSettings();
+    this.loadWebhook();
+    this.loadProxy();
+    this.messageProcessor.mount({
+      onMessageReceive: this.messageHandle['messages.upsert'].bind(this),
+    });
+    const client = await this.createClient(number);
+    this.startInboundInboxWorker();
+    return client;
+  }
+
+  public async reloadConnection(): Promise<WASocket> {
+    return this.connectToWhatsapp(this.phoneNumber);
   }
 
   private startInboundInboxWorker(): void {
