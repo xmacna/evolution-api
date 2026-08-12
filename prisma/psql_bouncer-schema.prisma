@@ -112,6 +112,7 @@ model Instance {
   N8nSetting              N8nSetting[]
   Evoai                   Evoai[]
   EvoaiSetting            EvoaiSetting?
+  inboundInboxMode        String                   @default("off") @db.VarChar(20)
 }
 
 model Session {
@@ -171,6 +172,7 @@ model Message {
   instanceId                   String
   MessageUpdate                MessageUpdate[]
   Media                        Media?
+  InboundReceipt               InboundReceipt?
   webhookUrl                   String?         @db.VarChar(500)
   status                       String?         @db.VarChar(30)
 
@@ -178,6 +180,34 @@ model Message {
   session   IntegrationSession? @relation(fields: [sessionId], references: [id])
 
   @@index([instanceId])
+}
+
+model InboundReceipt {
+  id              String    @id @default(cuid())
+  sourceCluster   String    @db.VarChar(64)
+  instanceScope   String    @db.VarChar(255)
+  messageId       String    @db.VarChar(255)
+  classification  String    @db.VarChar(20)
+  payloadHash     String    @db.Char(64)
+  collisionHash   String?   @db.Char(64)
+  state           String    @default("received") @db.VarChar(30)
+  webhookState    String    @default("pending") @db.VarChar(30)
+  chatwootState   String    @default("pending") @db.VarChar(30)
+  chatbotState    String    @default("pending") @db.VarChar(30)
+  attempts        Int       @default(0)
+  availableAt     DateTime  @default(now()) @db.Timestamp
+  leaseOwner      String?   @db.VarChar(100)
+  leaseToken      Int       @default(0)
+  leaseExpiresAt  DateTime? @db.Timestamp
+  lastError       String?   @db.Text
+  createdAt       DateTime  @default(now()) @db.Timestamp
+  updatedAt       DateTime  @updatedAt @db.Timestamp
+  Message         Message?  @relation(fields: [messageRecordId], references: [id], onDelete: SetNull)
+  messageRecordId String?   @unique
+
+  @@unique([sourceCluster, instanceScope, messageId])
+  @@index([state, availableAt])
+  @@index([instanceScope, createdAt])
 }
 
 model MessageUpdate {

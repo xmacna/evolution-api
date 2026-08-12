@@ -69,6 +69,7 @@ import {
   configService,
   ConfigSessionPhone,
   Database,
+  InboundInbox,
   Log,
   Openai,
   ProviderSession,
@@ -153,6 +154,13 @@ import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
 import { BaileysMessageProcessor } from './baileysMessage.processor';
+import {
+  classifyInboundMessage,
+  inboundPayloadHash,
+  normalizeInstanceScope,
+  PrismaInboundInbox,
+  resolveInboundMode,
+} from './inboundInbox';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 
 export interface ExtendedIMessageKey extends proto.IMessageKey {
@@ -226,6 +234,7 @@ async function getVideoDuration(input: Buffer | string | Readable): Promise<numb
 
 export class BaileysStartupService extends ChannelStartupService {
   private messageProcessor = new BaileysMessageProcessor();
+  private readonly inboundInbox: PrismaInboundInbox;
 
   constructor(
     public readonly configService: ConfigService,
@@ -241,6 +250,7 @@ export class BaileysStartupService extends ChannelStartupService {
     this.messageProcessor.mount({
       onMessageReceive: this.messageHandle['messages.upsert'].bind(this), // Bind the method to the current context
     });
+    this.inboundInbox = new PrismaInboundInbox(this.prismaRepository);
 
     this.authStateProvider = new AuthStateProvider(this.providerFiles);
   }
@@ -1083,8 +1093,33 @@ export class BaileysStartupService extends ChannelStartupService {
       { messages, type, requestId }: { messages: WAMessage[]; type: MessageUpsertType; requestId?: string },
       settings: any,
     ) => {
+      let activeReceipt:
+        | { id: string; leaseOwner: string; leaseToken: number; mode: 'off' | 'shadow' | 'enforce' }
+        | undefined;
       try {
         for (const received of messages) {
+          const inboundConfig = this.configService.get<InboundInbox>('INBOUND_INBOX');
+          const inboundMode = resolveInboundMode(this.instance.inboundInboxMode, inboundConfig.MODE);
+          const inboundClassification = classifyInboundMessage(received);
+          const inboundMessageId = received.key?.id;
+          const inboundIdentity = inboundMessageId
+            ? {
+                sourceCluster: inboundConfig.SOURCE_CLUSTER,
+                instanceScope: normalizeInstanceScope(this.instance.name),
+                messageId: inboundMessageId,
+              }
+            : undefined;
+
+          if (inboundMode !== 'off' && inboundIdentity && inboundClassification !== 'real') {
+            await this.inboundInbox.claim(
+              {
+                ...inboundIdentity,
+                classification: inboundClassification,
+                payloadHash: inboundPayloadHash(received),
+              },
+              inboundMode,
+            );
+          }
           if (
             received?.messageStubParameters?.some?.((param) =>
               [
@@ -1202,6 +1237,39 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           const messageRaw = this.prepareMessage(received);
+          let durableMessageRecordId: string | undefined;
+
+          if (inboundMode !== 'off' && inboundIdentity && inboundClassification === 'real') {
+            const messageData = { ...messageRaw };
+            delete messageData.pollUpdates;
+            const leaseOwner = v4();
+            const claim = await this.inboundInbox.claim(
+              {
+                ...inboundIdentity,
+                classification: inboundClassification,
+                payloadHash: inboundPayloadHash(received),
+                messageData,
+                leaseOwner,
+                leaseSeconds: inboundConfig.LEASE_SECONDS,
+              },
+              inboundMode,
+            );
+            durableMessageRecordId = claim.messageRecordId;
+            if (claim.leaseToken) {
+              activeReceipt = {
+                id: claim.receiptId,
+                leaseOwner,
+                leaseToken: claim.leaseToken,
+                mode: inboundMode,
+              };
+            }
+            if (!claim.shouldDispatch) {
+              this.logger.info(
+                `Inbound ${claim.kind} suppressed before sinks: ${inboundIdentity.instanceScope}/${inboundMessageId}`,
+              );
+              continue;
+            }
+          }
 
           if (messageRaw.messageType === 'pollUpdateMessage') {
             const pollCreationKey = messageRaw.message.pollUpdateMessage.pollCreationMessageKey;
@@ -1339,6 +1407,9 @@ export class BaileysStartupService extends ChannelStartupService {
               messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
               messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
             }
+            if (activeReceipt) await this.inboundInbox.markSink(activeReceipt.id, 'chatwoot', 'sent');
+          } else if (activeReceipt) {
+            await this.inboundInbox.markSink(activeReceipt.id, 'chatwoot', 'skipped');
           }
 
           if (this.configService.get<Openai>('OPENAI').ENABLED && received?.message?.audioMessage) {
@@ -1355,7 +1426,9 @@ export class BaileysStartupService extends ChannelStartupService {
           if (this.configService.get<Database>('DATABASE').SAVE_DATA.NEW_MESSAGE) {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { pollUpdates, ...messageData } = messageRaw;
-            const msg = await this.prismaRepository.message.create({ data: messageData });
+            const msg = durableMessageRecordId
+              ? await this.prismaRepository.message.findUniqueOrThrow({ where: { id: durableMessageRecordId } })
+              : await this.prismaRepository.message.create({ data: messageData });
 
             const { remoteJid } = received.key;
             const timestamp = msg.messageTimestamp;
@@ -1389,50 +1462,49 @@ export class BaileysStartupService extends ChannelStartupService {
                 try {
                   if (isVideo && !this.configService.get<S3>('S3').SAVE_VIDEO) {
                     this.logger.warn('Video upload is disabled. Skipping video upload.');
-                    // Skip video upload by returning early from this block
-                    return;
-                  }
-
-                  const message: any = received;
-
-                  // Verificação adicional para garantir que há conteúdo de mídia real
-                  const hasRealMedia = this.hasValidMediaContent(message);
-
-                  if (!hasRealMedia) {
-                    this.logger.warn('Message detected as media but contains no valid media content');
                   } else {
-                    const media = await this.getBase64FromMediaMessage({ message }, true);
+                    const message: any = received;
 
-                    if (!media) {
-                      this.logger.verbose('No valid media to upload (messageContextInfo only), skipping MinIO');
-                      return;
+                    // Verificação adicional para garantir que há conteúdo de mídia real
+                    const hasRealMedia = this.hasValidMediaContent(message);
+
+                    if (!hasRealMedia) {
+                      this.logger.warn('Message detected as media but contains no valid media content');
+                    } else {
+                      const media = await this.getBase64FromMediaMessage({ message }, true);
+
+                      if (!media) {
+                        this.logger.verbose('No valid media to upload (messageContextInfo only), skipping MinIO');
+                      } else {
+                        const { buffer, mediaType, fileName, size } = media;
+                        const mimetype = mimeTypes.lookup(fileName).toString();
+                        const fullName = join(
+                          `${this.instance.id}`,
+                          received.key.remoteJid,
+                          mediaType,
+                          `${Date.now()}_${fileName}`,
+                        );
+                        await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, {
+                          'Content-Type': mimetype,
+                        });
+
+                        await this.prismaRepository.media.create({
+                          data: {
+                            messageId: msg.id,
+                            instanceId: this.instanceId,
+                            type: mediaType,
+                            fileName: fullName,
+                            mimetype,
+                          },
+                        });
+
+                        const mediaUrl = await s3Service.getObjectUrl(fullName);
+
+                        messageRaw.message.mediaUrl = mediaUrl;
+
+                        await this.prismaRepository.message.update({ where: { id: msg.id }, data: messageRaw });
+                      }
                     }
-
-                    const { buffer, mediaType, fileName, size } = media;
-                    const mimetype = mimeTypes.lookup(fileName).toString();
-                    const fullName = join(
-                      `${this.instance.id}`,
-                      received.key.remoteJid,
-                      mediaType,
-                      `${Date.now()}_${fileName}`,
-                    );
-                    await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, { 'Content-Type': mimetype });
-
-                    await this.prismaRepository.media.create({
-                      data: {
-                        messageId: msg.id,
-                        instanceId: this.instanceId,
-                        type: mediaType,
-                        fileName: fullName,
-                        mimetype,
-                      },
-                    });
-
-                    const mediaUrl = await s3Service.getObjectUrl(fullName);
-
-                    messageRaw.message.mediaUrl = mediaUrl;
-
-                    await this.prismaRepository.message.update({ where: { id: msg.id }, data: messageRaw });
                   }
                 } catch (error) {
                   this.logger.error(['Error on upload file to minio', error?.message, error?.stack]);
@@ -1480,7 +1552,8 @@ export class BaileysStartupService extends ChannelStartupService {
           }
           console.log(messageRaw);
 
-          this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
+          await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
+          if (activeReceipt) await this.inboundInbox.markSink(activeReceipt.id, 'webhook', 'sent');
 
           await chatbotController.emit({
             instance: { instanceName: this.instance.name, instanceId: this.instanceId },
@@ -1488,6 +1561,7 @@ export class BaileysStartupService extends ChannelStartupService {
             msg: messageRaw,
             pushName: messageRaw.pushName,
           });
+          if (activeReceipt) await this.inboundInbox.markSink(activeReceipt.id, 'chatbot', 'sent');
 
           const contact = await this.prismaRepository.contact.findFirst({
             where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },
@@ -1506,6 +1580,10 @@ export class BaileysStartupService extends ChannelStartupService {
           };
 
           if (contactRaw.remoteJid === 'status@broadcast') {
+            if (activeReceipt) {
+              await this.inboundInbox.markDone(activeReceipt.id, activeReceipt.leaseOwner, activeReceipt.leaseToken);
+              activeReceipt = undefined;
+            }
             continue;
           }
 
@@ -1538,6 +1616,10 @@ export class BaileysStartupService extends ChannelStartupService {
                 update: contactRaw,
               });
 
+            if (activeReceipt) {
+              await this.inboundInbox.markDone(activeReceipt.id, activeReceipt.leaseOwner, activeReceipt.leaseToken);
+              activeReceipt = undefined;
+            }
             continue;
           }
 
@@ -1549,9 +1631,22 @@ export class BaileysStartupService extends ChannelStartupService {
               update: contactRaw,
               create: contactRaw,
             });
+          if (activeReceipt) {
+            await this.inboundInbox.markDone(activeReceipt.id, activeReceipt.leaseOwner, activeReceipt.leaseToken);
+            activeReceipt = undefined;
+          }
         }
       } catch (error) {
+        if (activeReceipt) {
+          await this.inboundInbox.markFailed(
+            activeReceipt.id,
+            activeReceipt.leaseOwner,
+            activeReceipt.leaseToken,
+            error,
+          );
+        }
         this.logger.error(error);
+        throw error;
       }
     },
 
@@ -1915,8 +2010,7 @@ export class BaileysStartupService extends ChannelStartupService {
             if (events['messages.upsert']) {
               const payload = events['messages.upsert'];
 
-              // this.messageProcessor.processMessage(payload, settings);
-              await this.messageHandle['messages.upsert'](payload, settings);
+              await this.messageProcessor.processMessage(payload, settings);
             }
 
             if (events['messages.update']) {

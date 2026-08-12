@@ -60,6 +60,7 @@ export declare namespace wa {
     number?: string;
     integration?: string;
     businessId?: string;
+    inboundInboxMode?: 'off' | 'shadow' | 'enforce';
   };
 
   export type LocalChatwoot = {

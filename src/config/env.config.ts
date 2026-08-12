@@ -59,6 +59,14 @@ export type Database = {
   DELETE_DATA: DeleteData;
 };
 
+export type InboundInboxMode = 'off' | 'shadow' | 'enforce';
+export type InboundInbox = {
+  MODE: InboundInboxMode;
+  SOURCE_CLUSTER: string;
+  LEASE_SECONDS: number;
+  MAX_ATTEMPTS: number;
+};
+
 export type DeleteData = {
   LOGICAL_MESSAGE_DELETE: boolean;
 };
@@ -397,6 +405,7 @@ export interface Env {
   SSL_CONF: SslConf;
   PROVIDER: ProviderSession;
   DATABASE: Database;
+  INBOUND_INBOX: InboundInbox;
   RABBITMQ: Rabbitmq;
   NATS: Nats;
   SQS: Sqs;
@@ -500,6 +509,14 @@ export class ConfigService {
         DELETE_DATA: {
           LOGICAL_MESSAGE_DELETE: process.env?.DATABASE_DELETE_MESSAGE === 'true',
         },
+      },
+      INBOUND_INBOX: {
+        MODE: ['off', 'shadow', 'enforce'].includes(process.env?.INBOUND_INBOX_MODE || '')
+          ? (process.env.INBOUND_INBOX_MODE as InboundInboxMode)
+          : 'off',
+        SOURCE_CLUSTER: process.env?.INBOUND_INBOX_SOURCE_CLUSTER || 'default',
+        LEASE_SECONDS: Number.parseInt(process.env?.INBOUND_INBOX_LEASE_SECONDS || '60'),
+        MAX_ATTEMPTS: Number.parseInt(process.env?.INBOUND_INBOX_MAX_ATTEMPTS || '10'),
       },
       RABBITMQ: {
         ENABLED: process.env?.RABBITMQ_ENABLED === 'true',

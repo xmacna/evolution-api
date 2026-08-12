@@ -291,6 +291,7 @@ export class WAMonitoringService {
       number: instanceData.number,
       businessId: instanceData.businessId,
       ownerJid: instanceData.ownerJid,
+      inboundInboxMode: instanceData.inboundInboxMode,
     });
 
     if (instanceData.connectionStatus === 'open' || instanceData.connectionStatus === 'connecting') {
@@ -329,6 +330,7 @@ export class WAMonitoringService {
             number: instanceData.number,
             businessId: instanceData.businessId,
             connectionStatus: instanceData.connectionStatus as any, // Pass connection status
+            inboundInboxMode: instanceData.inboundInboxMode as 'off' | 'shadow' | 'enforce',
           };
 
           this.setInstance(instance);
@@ -359,6 +361,7 @@ export class WAMonitoringService {
           businessId: instance.businessId,
           ownerJid: instance.ownerJid,
           connectionStatus: instance.connectionStatus as any, // Pass connection status
+          inboundInboxMode: instance.inboundInboxMode as 'off' | 'shadow' | 'enforce',
         });
       }),
     );
@@ -384,6 +387,7 @@ export class WAMonitoringService {
           token: instance.token,
           businessId: instance.businessId,
           connectionStatus: instance.connectionStatus as any, // Pass connection status
+          inboundInboxMode: instance.inboundInboxMode as 'off' | 'shadow' | 'enforce',
         });
       }),
     );

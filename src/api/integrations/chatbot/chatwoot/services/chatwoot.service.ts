@@ -7,7 +7,7 @@ import { PrismaRepository } from '@api/repository/repository.service';
 import { CacheService } from '@api/services/cache.service';
 import { WAMonitoringService } from '@api/services/monitor.service';
 import { Events } from '@api/types/wa.types';
-import { Chatwoot, ConfigService, Database, HttpServer } from '@config/env.config';
+import { Chatwoot, ConfigService, Database, HttpServer, InboundInbox } from '@config/env.config';
 import { Logger } from '@config/logger.config';
 import ChatwootClient, {
   ChatwootAPIConfig,
@@ -2524,6 +2524,14 @@ export class ChatwootService {
       }
     } catch (error) {
       this.logger.error(error);
+      const waInstance = this.waMonitor.waInstances[instance.instanceName];
+      const inboxDefault = this.configService.get<InboundInbox>('INBOUND_INBOX').MODE;
+      if (
+        event === Events.MESSAGES_UPSERT &&
+        (waInstance?.instance?.inboundInboxMode === 'enforce' || inboxDefault === 'enforce')
+      ) {
+        throw error;
+      }
     }
   }
 

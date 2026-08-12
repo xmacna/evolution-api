@@ -2,7 +2,7 @@ import { EventDto } from '@api/integrations/event/event.dto';
 import { PrismaRepository } from '@api/repository/repository.service';
 import { WAMonitoringService } from '@api/services/monitor.service';
 import { wa } from '@api/types/wa.types';
-import { configService, Log, Webhook } from '@config/env.config';
+import { configService, InboundInbox, Log, Webhook } from '@config/env.config';
 import { Logger } from '@config/logger.config';
 // import { BadRequestException } from '@exceptions';
 import axios, { AxiosInstance } from 'axios';
@@ -145,6 +145,14 @@ export class WebhookController extends EventController implements EventControlle
             url: baseURL,
             server_url: serverUrl,
           });
+          const waInstance = this.monitor.waInstances[instanceName];
+          const inboxDefault = configService.get<InboundInbox>('INBOUND_INBOX').MODE;
+          if (
+            event === 'messages.upsert' &&
+            (waInstance?.instance?.inboundInboxMode === 'enforce' || inboxDefault === 'enforce')
+          ) {
+            throw error;
+          }
         }
       }
     }
@@ -195,6 +203,14 @@ export class WebhookController extends EventController implements EventControlle
             url: globalURL,
             server_url: serverUrl,
           });
+          const waInstance = this.monitor.waInstances[instanceName];
+          const inboxDefault = configService.get<InboundInbox>('INBOUND_INBOX').MODE;
+          if (
+            event === 'messages.upsert' &&
+            (waInstance?.instance?.inboundInboxMode === 'enforce' || inboxDefault === 'enforce')
+          ) {
+            throw error;
+          }
         }
       }
     }
