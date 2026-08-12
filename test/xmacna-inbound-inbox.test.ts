@@ -12,8 +12,11 @@ import {
 } from '../src/api/integrations/channel/whatsapp/inboundInbox';
 import { inboundInboxModeSchema, instanceSchema } from '../src/validate/instance.schema';
 
-test('normalizes stable instance scope independently from internal instance ids', () => {
-  assert.equal(normalizeInstanceScope('  FÁBI   FontesEnergia  '), 'fábi-fontesenergia');
+test('derives stable tenant scopes without merging distinct raw instance names', () => {
+  assert.equal(normalizeInstanceScope('Fabi'), normalizeInstanceScope('Fabi'));
+  assert.notEqual(normalizeInstanceScope('Foo'), normalizeInstanceScope('foo'));
+  assert.notEqual(normalizeInstanceScope('A B'), normalizeInstanceScope('A-B'));
+  assert.match(normalizeInstanceScope('  FÁBI   FontesEnergia  '), /^v1:[0-9a-f]{64}$/);
   assert.equal(normalizeContactScope(' 5511999999999@S.WHATSAPP.NET '), '5511999999999@s.whatsapp.net');
 });
 

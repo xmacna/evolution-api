@@ -71,7 +71,10 @@ function canonicalize(value: unknown): unknown {
 }
 
 export function normalizeInstanceScope(instanceName: string): string {
-  return instanceName.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, '-');
+  // Instance.name is the stable external identity across internal-ID recreation.
+  // Hash the exact UTF-8 value: cosmetic normalization is not injective and could
+  // merge distinct tenants such as "Foo"/"foo" or "A B"/"A-B".
+  return `v1:${createHash('sha256').update(instanceName, 'utf8').digest('hex')}`;
 }
 
 export function normalizeContactScope(remoteJid: string | null | undefined): string {
@@ -120,7 +123,7 @@ export function resolveInboundMode(
 export function evaluateExistingReceipt(
   existing: ExistingReceipt,
   incoming: Pick<InboundClaimInput, 'classification' | 'payloadHash'>,
-): InboundClaimKind {
+): Exclude<InboundClaimKind, 'claimed'> {
   if (existing.payloadHash === incoming.payloadHash) return 'duplicate';
   if (existing.classification === 'stub' && incoming.classification === 'real') return 'promoted';
   if (incoming.classification === 'stub') return 'duplicate';
@@ -142,44 +145,56 @@ export class PrismaInboundInbox {
     if (mode === 'shadow') {
       return this.observe(input);
     }
-    try {
-      return await this.repository.$transaction(
-        async (tx) => {
-          const receipt = await tx.inboundReceipt.create({
-            data: {
-              sourceCluster: input.sourceCluster,
-              instanceScope: input.instanceScope,
-              contactScope: input.contactScope,
-              messageId: input.messageId,
-              classification: input.classification,
-              payloadHash: input.payloadHash,
-              state: input.classification === 'real' ? 'processing' : 'observed',
-              leaseOwner: input.classification === 'real' ? input.leaseOwner : undefined,
-              attempts: input.classification === 'real' ? 1 : 0,
-              leaseToken: input.classification === 'real' ? 1 : 0,
-              leaseExpiresAt:
-                input.classification === 'real' ? new Date(Date.now() + (input.leaseSeconds ?? 60) * 1000) : undefined,
-            },
-          });
-          let messageRecordId: string | undefined;
-          if (input.classification === 'real' && input.messageData) {
-            const message = await tx.message.create({ data: input.messageData as any });
-            messageRecordId = message.id;
-            await tx.inboundReceipt.update({ where: { id: receipt.id }, data: { messageRecordId } });
-          }
-          return {
-            kind: 'claimed' as const,
-            receiptId: receipt.id,
-            messageRecordId,
-            shouldDispatch: input.classification === 'real',
-            leaseToken: input.classification === 'real' ? 1 : undefined,
-          };
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
-    } catch (error) {
-      if (!isUniqueConstraint(error)) throw error;
+    let uniqueConflict = false;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try {
+        return await this.repository.$transaction(
+          async (tx) => {
+            const receipt = await tx.inboundReceipt.create({
+              data: {
+                sourceCluster: input.sourceCluster,
+                instanceScope: input.instanceScope,
+                contactScope: input.contactScope,
+                messageId: input.messageId,
+                classification: input.classification,
+                payloadHash: input.payloadHash,
+                state: input.classification === 'real' ? 'processing' : 'observed',
+                leaseOwner: input.classification === 'real' ? input.leaseOwner : undefined,
+                attempts: input.classification === 'real' ? 1 : 0,
+                leaseToken: input.classification === 'real' ? 1 : 0,
+                leaseExpiresAt:
+                  input.classification === 'real'
+                    ? new Date(Date.now() + (input.leaseSeconds ?? 60) * 1000)
+                    : undefined,
+              },
+            });
+            let messageRecordId: string | undefined;
+            if (input.classification === 'real' && input.messageData) {
+              const message = await tx.message.create({ data: input.messageData as any });
+              messageRecordId = message.id;
+              await tx.inboundReceipt.update({ where: { id: receipt.id }, data: { messageRecordId } });
+            }
+            return {
+              kind: 'claimed' as const,
+              receiptId: receipt.id,
+              messageRecordId,
+              shouldDispatch: input.classification === 'real',
+              leaseToken: input.classification === 'real' ? 1 : undefined,
+            };
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (isUniqueConstraint(error)) {
+          uniqueConflict = true;
+          break;
+        }
+        if (!isWriteConflict(error) || attempt === 7) throw error;
+        const jitterMs = Math.floor(Math.random() * 5);
+        await new Promise((resolve) => setTimeout(resolve, 2 ** attempt + jitterMs));
+      }
     }
+    if (!uniqueConflict) throw new Error('Inbound receipt initial claim retry exhausted');
 
     const key = {
       sourceCluster: input.sourceCluster,
@@ -192,70 +207,15 @@ export class PrismaInboundInbox {
     if (!existing) throw new Error('Inbound receipt disappeared after unique conflict');
 
     const kind = evaluateExistingReceipt(existing, input);
-    if (kind === 'duplicate') {
-      await this.repository.inboundReceipt.update({
-        where: { id: existing.id },
-        data: { duplicateCount: { increment: 1 }, lastSeenAt: new Date() },
-      });
-      if (input.classification === 'real' && input.leaseOwner && existing.state !== 'done') {
-        const reclaimed = await this.repository.inboundReceipt.updateMany({
-          where: {
-            id: existing.id,
-            OR: [{ state: 'failed' }, { leaseExpiresAt: { lt: new Date() } }],
-          },
-          data: {
-            state: 'processing',
-            contactScope: input.contactScope,
-            attempts: { increment: 1 },
-            leaseOwner: input.leaseOwner,
-            leaseToken: { increment: 1 },
-            leaseExpiresAt: new Date(Date.now() + (input.leaseSeconds ?? 60) * 1000),
-            lastError: null,
-          },
-        });
-        if (reclaimed.count === 1) {
-          const current = await this.repository.inboundReceipt.findUniqueOrThrow({ where: { id: existing.id } });
-          let messageRecordId = current.messageRecordId ?? undefined;
-          if (!messageRecordId && input.messageData) {
-            const message = await this.repository.message.create({ data: input.messageData as any });
-            messageRecordId = message.id;
-            await this.repository.inboundReceipt.update({
-              where: { id: existing.id },
-              data: { messageRecordId },
-            });
-          }
-          return {
-            kind: 'claimed',
-            receiptId: existing.id,
-            messageRecordId,
-            shouldDispatch: true,
-            leaseToken: current.leaseToken,
-          };
-        }
-      }
-      return {
-        kind,
-        receiptId: existing.id,
-        messageRecordId: existing.messageRecordId ?? undefined,
-        shouldDispatch: false,
-      };
-    }
-    if (kind === 'collision') {
-      await this.repository.inboundReceipt.update({
-        where: { id: existing.id },
-        data: {
-          state: 'quarantined',
-          collisionHash: input.payloadHash,
-          lastSeenAt: new Date(),
-          lastError: 'message_id_payload_hash_collision',
-        },
-      });
-      return { kind, receiptId: existing.id, shouldDispatch: false };
+    if (kind !== 'promoted') {
+      // A redelivery at ingress never reopens work. Only the durable reconciler may
+      // lease failed/expired receipts, preserving per-sink completion state.
+      return this.recordSettledReplay(existing, input, kind);
     }
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
       try {
-        return await this.repository.$transaction(
+        const outcome = await this.repository.$transaction(
           async (tx) => {
             const current = await tx.inboundReceipt.findUnique({
               where: { sourceCluster_instanceScope_messageId: key },
@@ -263,24 +223,16 @@ export class PrismaInboundInbox {
             if (!current) throw new Error('Inbound receipt disappeared during promotion');
             if (current.classification === 'real') {
               const currentKind = current.payloadHash === input.payloadHash ? 'duplicate' : 'collision';
-              await tx.inboundReceipt.update({
-                where: { id: current.id },
-                data:
-                  currentKind === 'duplicate'
-                    ? { duplicateCount: { increment: 1 }, lastSeenAt: new Date() }
-                    : {
-                        state: 'quarantined',
-                        collisionHash: input.payloadHash,
-                        lastSeenAt: new Date(),
-                        lastError: 'message_id_payload_hash_collision',
-                      },
-              });
               return {
-                kind: currentKind,
-                receiptId: current.id,
-                messageRecordId: current.messageRecordId ?? undefined,
-                shouldDispatch: false,
-              } as InboundClaimResult;
+                result: {
+                  kind: currentKind,
+                  receiptId: current.id,
+                  messageRecordId: current.messageRecordId ?? undefined,
+                  shouldDispatch: false,
+                } as InboundClaimResult,
+                settledReplay: current,
+                settledKind: currentKind,
+              };
             }
 
             let messageRecordId = current.messageRecordId ?? undefined;
@@ -306,20 +258,67 @@ export class PrismaInboundInbox {
             });
             const promoted = await tx.inboundReceipt.findUniqueOrThrow({ where: { id: current.id } });
             return {
-              kind: 'promoted',
-              receiptId: current.id,
-              messageRecordId,
-              shouldDispatch: true,
-              leaseToken: promoted.leaseToken,
+              result: {
+                kind: 'promoted' as const,
+                receiptId: current.id,
+                messageRecordId,
+                shouldDispatch: true,
+                leaseToken: promoted.leaseToken,
+              },
+              settledReplay: undefined,
+              settledKind: undefined,
             };
           },
           { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
         );
+        if (outcome.settledReplay) {
+          return this.recordSettledReplay(
+            outcome.settledReplay,
+            input,
+            outcome.settledKind as 'duplicate' | 'collision',
+          );
+        }
+        return outcome.result;
       } catch (error) {
-        if (!isWriteConflict(error) || attempt === 2) throw error;
+        if (!isWriteConflict(error)) throw error;
+        const raced = await this.repository.inboundReceipt.findUnique({
+          where: { sourceCluster_instanceScope_messageId: key },
+        });
+        if (raced?.classification === 'real') {
+          const racedKind = raced.payloadHash === input.payloadHash ? 'duplicate' : 'collision';
+          return this.recordSettledReplay(raced, input, racedKind);
+        }
+        if (attempt === 7) throw error;
+        const jitterMs = Math.floor(Math.random() * 5);
+        await new Promise((resolve) => setTimeout(resolve, 2 ** attempt + jitterMs));
       }
     }
     throw new Error('Inbound receipt promotion retry exhausted');
+  }
+
+  private async recordSettledReplay(
+    existing: ExistingReceipt,
+    input: InboundClaimInput,
+    kind: 'duplicate' | 'collision',
+  ): Promise<InboundClaimResult> {
+    await this.repository.inboundReceipt.update({
+      where: { id: existing.id },
+      data:
+        kind === 'duplicate'
+          ? { duplicateCount: { increment: 1 }, lastSeenAt: new Date() }
+          : {
+              state: 'quarantined',
+              collisionHash: input.payloadHash,
+              lastSeenAt: new Date(),
+              lastError: 'message_id_payload_hash_collision',
+            },
+    });
+    return {
+      kind,
+      receiptId: existing.id,
+      messageRecordId: existing.messageRecordId ?? undefined,
+      shouldDispatch: false,
+    };
   }
 
   public async markSink(

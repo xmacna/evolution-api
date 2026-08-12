@@ -347,8 +347,8 @@ export class InstanceController {
       }),
       this.prismaRepository.inboundReceipt.findFirst({
         where: { ...where, state: { in: ['received', 'processing', 'failed'] } },
-        orderBy: { updatedAt: 'asc' },
-        select: { updatedAt: true },
+        orderBy: { createdAt: 'asc' },
+        select: { createdAt: true },
       }),
       this.prismaRepository.inboundReceipt.count({ where: { ...where, webhookState: 'failed' } }),
       this.prismaRepository.inboundReceipt.count({ where: { ...where, chatwootState: 'failed' } }),
@@ -364,7 +364,7 @@ export class InstanceController {
       states: Object.fromEntries(states.map((row) => [row.state, row._count._all])),
       failedSinks: { webhook: webhookFailed, chatwoot: chatwootFailed, chatbot: chatbotFailed },
       oldestPendingAgeSeconds: oldestPending
-        ? Math.max(0, Math.floor((Date.now() - oldestPending.updatedAt.getTime()) / 1000))
+        ? Math.max(0, Math.floor((Date.now() - oldestPending.createdAt.getTime()) / 1000))
         : 0,
       sampledAt: new Date().toISOString(),
     };

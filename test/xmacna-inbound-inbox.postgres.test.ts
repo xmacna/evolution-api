@@ -7,10 +7,69 @@ import { join } from 'node:path';
 
 import { PrismaClient } from '@prisma/client';
 
-import { PrismaInboundInbox } from '../src/api/integrations/channel/whatsapp/inboundInbox';
+import {
+  normalizeInstanceScope,
+  PrismaInboundInbox,
+} from '../src/api/integrations/channel/whatsapp/inboundInbox';
 import { backfill, exportTombstones, importTombstones } from '../src/cli/inboundInboxMaintenance';
 
 const enabled = process.env.XMACNA_INBOX_INTEGRATION === '1';
+
+test('raw instance names that used to normalize alike remain tenant-isolated', { skip: !enabled }, async () => {
+  const repository = new PrismaClient();
+  const inbox = new PrismaInboundInbox(repository as any);
+  const suffix = randomUUID();
+  const names = [`Tenant ${suffix}`, `Tenant-${suffix}`];
+  const instanceIds = names.map((_, index) => `scope-${index}-${suffix}`);
+  const sourceCluster = 'local-scope-isolation';
+  const messageId = `same-wamid-${suffix}`;
+
+  try {
+    await repository.$connect();
+    await repository.instance.createMany({
+      data: names.map((name, index) => ({ id: instanceIds[index], name, inboundInboxMode: 'enforce' })),
+    });
+    const results = await Promise.all(
+      names.map((name, index) =>
+        inbox.claim(
+          {
+            sourceCluster,
+            instanceScope: normalizeInstanceScope(name),
+            contactScope: 'contact@s.whatsapp.net',
+            messageId,
+            classification: 'real',
+            payloadHash: 'a'.repeat(64),
+            leaseOwner: `scope-worker-${index}`,
+            messageData: {
+              key: { id: messageId, remoteJid: 'contact@s.whatsapp.net', fromMe: false },
+              pushName: 'Tenant isolation',
+              messageType: 'conversation',
+              message: { conversation: name },
+              source: 'unknown',
+              messageTimestamp: 1,
+              instanceId: instanceIds[index],
+            },
+          },
+          'enforce',
+        ),
+      ),
+    );
+    assert.deepEqual(
+      results.map((result) => result.shouldDispatch),
+      [true, true],
+    );
+    assert.equal(
+      await repository.inboundReceipt.count({
+        where: { sourceCluster, messageId },
+      }),
+      2,
+    );
+  } finally {
+    await repository.inboundReceipt.deleteMany({ where: { sourceCluster, messageId } });
+    await repository.instance.deleteMany({ where: { id: { in: instanceIds } } });
+    await repository.$disconnect();
+  }
+});
 
 test('840 concurrent deliveries create one receipt and one durable message', { skip: !enabled }, async () => {
   const repository = new PrismaClient();
@@ -62,6 +121,19 @@ test('840 concurrent deliveries create one receipt and one durable message', { s
     assert.ok(receipts[0].messageRecordId);
     assert.equal(receipts[0].duplicateCount, 839);
     assert.equal(await repository.message.count({ where: { instanceId } }), 1);
+
+    const winner = results.find((result) => result.shouldDispatch)!;
+    assert.equal(await inbox.markSink(winner.receiptId, 'chatwoot', 'sent', input.leaseOwner, winner.leaseToken), true);
+    assert.equal(
+      await inbox.markFailed(winner.receiptId, input.leaseOwner, winner.leaseToken!, 'webhook failed', 10, 0),
+      true,
+    );
+    const immediateRetry = await inbox.claim({ ...input, leaseOwner: `retry-${suffix}` }, 'enforce');
+    assert.equal(immediateRetry.kind, 'duplicate');
+    assert.equal(immediateRetry.shouldDispatch, false);
+    const failed = await repository.inboundReceipt.findUniqueOrThrow({ where: { id: winner.receiptId } });
+    assert.equal(failed.state, 'failed');
+    assert.equal(failed.chatwootState, 'sent');
   } finally {
     await repository.inboundReceipt.deleteMany({ where: { instanceScope: `instance-${suffix}` } });
     await repository.instance.deleteMany({ where: { id: instanceId } });
@@ -222,13 +294,12 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
         leaseOwner: 'promotion-worker',
         leaseSeconds: 60,
       } as const;
-    const concurrentPromotions = await Promise.all([
-      inbox.claim(realInput, 'enforce'),
-      inbox.claim(realInput, 'enforce'),
-    ]);
+    const concurrentPromotions = await Promise.all(
+      Array.from({ length: 100 }, () => inbox.claim(realInput, 'enforce')),
+    );
     const promoted = concurrentPromotions.find((result) => result.kind === 'promoted')!;
     assert.equal(concurrentPromotions.filter((result) => result.kind === 'promoted').length, 1);
-    assert.equal(concurrentPromotions.filter((result) => result.kind === 'duplicate').length, 1);
+    assert.equal(concurrentPromotions.filter((result) => result.kind === 'duplicate').length, 99);
     assert.equal(promoted.kind, 'promoted');
     assert.equal(promoted.shouldDispatch, true);
     assert.equal(await inbox.markDone(promoted.receiptId, 'promotion-worker', promoted.leaseToken!), true);
@@ -249,6 +320,10 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
     assert.equal(collision.kind, 'collision');
     assert.equal(collision.shouldDispatch, false);
     assert.equal((await repository.inboundReceipt.findUniqueOrThrow({ where: { id: receiptId } })).state, 'quarantined');
+    await repository.inboundReceipt.update({
+      where: { id: receiptId },
+      data: { leaseExpiresAt: new Date(0) },
+    });
 
     await repository.instance.delete({ where: { id: instanceId } });
     instanceId = `new-${suffix}`;
@@ -267,6 +342,8 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
       'enforce',
     );
     assert.equal(replay.shouldDispatch, false);
+    const quarantined = await repository.inboundReceipt.findUniqueOrThrow({ where: { id: receiptId } });
+    assert.equal(quarantined.state, 'quarantined');
     assert.equal(await repository.inboundReceipt.count({ where: { id: receiptId } }), 1);
   } finally {
     if (receiptId) await repository.inboundReceipt.deleteMany({ where: { id: receiptId } });
@@ -332,7 +409,7 @@ test('historical backfill never queues replay and tombstones migrate with rewrit
     });
     const imported = await repository.inboundReceipt.findMany({ where: { sourceCluster: targetCluster } });
     assert.equal(imported.length, 2);
-    assert.ok(imported.every((row) => row.instanceScope === targetScope.toLowerCase().replace(/\s+/g, '-')));
+    assert.ok(imported.every((row) => row.instanceScope === normalizeInstanceScope(targetScope)));
     assert.ok(imported.every((row) => row.messageRecordId === null && row.state === 'historical_seen'));
   } finally {
     await repository.inboundReceipt.deleteMany({ where: { sourceCluster: { in: [sourceCluster, targetCluster] } } });
