@@ -141,6 +141,109 @@ test('840 concurrent deliveries create one receipt and one durable message', { s
   }
 });
 
+test('Chatwoot success followed by webhook failure replays the exact enriched payload', { skip: !enabled }, async () => {
+  const repository = new PrismaClient();
+  const inbox = new PrismaInboundInbox(repository as any);
+  const suffix = randomUUID();
+  const instanceId = `payload-replay-${suffix}`;
+  const instanceScope = `payload-replay-scope-${suffix}`;
+  const sourceCluster = 'local-payload-replay';
+  const messageId = `payload-${suffix}`;
+
+  try {
+    await repository.$connect();
+    await repository.instance.create({
+      data: { id: instanceId, name: `payload-replay-${suffix}`, inboundInboxMode: 'enforce' },
+    });
+    const claimed = await inbox.claim(
+      {
+        sourceCluster,
+        instanceScope,
+        contactScope: '12345@lid',
+        messageId,
+        classification: 'real',
+        payloadHash: 'd'.repeat(64),
+        leaseOwner: 'payload-ingress',
+        leaseSeconds: 60,
+        messageData: {
+          key: { id: messageId, remoteJid: '12345@lid', remoteJidAlt: '5511999999999@s.whatsapp.net', fromMe: false },
+          pushName: 'Payload replay',
+          messageType: 'pollUpdateMessage',
+          message: { pollUpdateMessage: { vote: { selectedOptions: ['opcao-a'] } } },
+          source: 'unknown',
+          messageTimestamp: 1,
+          instanceId,
+        },
+      },
+      'enforce',
+    );
+
+    const afterPoll = {
+      key: { id: messageId, remoteJid: '12345@lid', remoteJidAlt: '5511999999999@s.whatsapp.net', fromMe: false },
+      pushName: 'Payload replay',
+      messageType: 'pollUpdateMessage',
+      message: { pollUpdateMessage: { vote: { selectedOptions: ['opcao-a'] } } },
+      pollUpdates: [{ name: 'opcao-a', voters: ['12345@lid'] }],
+      source: 'unknown',
+      messageTimestamp: 1,
+      instanceId,
+    };
+    assert.equal(
+      await inbox.persistMessage(claimed.receiptId, 'payload-ingress', claimed.leaseToken!, afterPoll),
+      true,
+    );
+
+    const afterChatwoot = {
+      ...afterPoll,
+      chatwootMessageId: 71,
+      chatwootInboxId: 72,
+      chatwootConversationId: 73,
+    };
+    assert.equal(
+      await inbox.markSink(
+        claimed.receiptId,
+        'chatwoot',
+        'sent',
+        'payload-ingress',
+        claimed.leaseToken,
+        afterChatwoot,
+      ),
+      true,
+    );
+
+    const beforeWebhook = {
+      ...afterChatwoot,
+      key: { ...afterChatwoot.key, remoteJid: '5511999999999@s.whatsapp.net' },
+      message: { ...afterChatwoot.message, base64: 'YmluYXJ5LW1lZGlh' },
+    };
+    assert.equal(
+      await inbox.persistMessage(claimed.receiptId, 'payload-ingress', claimed.leaseToken!, beforeWebhook),
+      true,
+    );
+    assert.equal(
+      await inbox.markSink(claimed.receiptId, 'webhook', 'failed', 'payload-ingress', claimed.leaseToken),
+      true,
+    );
+    assert.equal(
+      await inbox.markFailed(claimed.receiptId, 'payload-ingress', claimed.leaseToken!, 'webhook failed', 10, 0),
+      true,
+    );
+
+    const replay = await inbox.leaseNext(sourceCluster, instanceScope, 'payload-reconciler', 60, 10);
+    assert.ok(replay);
+    assert.equal(replay.chatwootState, 'sent');
+    assert.equal(replay.webhookState, 'failed');
+    assert.equal((replay.message as any).chatwootConversationId, 73);
+    assert.equal((replay.message as any).key.remoteJid, '5511999999999@s.whatsapp.net');
+    assert.equal((replay.message as any).message.base64, 'YmluYXJ5LW1lZGlh');
+    assert.deepEqual((replay.message as any).pollUpdates, afterPoll.pollUpdates);
+  } finally {
+    await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope } });
+    await repository.instance.deleteMany({ where: { id: instanceId } });
+    await repository.$disconnect();
+  }
+});
+
 test('reconciler leases with fencing, preserves completed sinks and orders each contact', { skip: !enabled }, async () => {
   const repository = new PrismaClient();
   const inbox = new PrismaInboundInbox(repository as any);

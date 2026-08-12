@@ -160,6 +160,7 @@ model Message {
   participant                  String?         @db.VarChar(100)
   messageType                  String          @db.VarChar(100)
   message                      Json            @db.JsonB
+  pollUpdates                  Json?           @db.JsonB
   contextInfo                  Json?           @db.JsonB
   source                       DeviceMessage
   messageTimestamp             Int             @db.Integer

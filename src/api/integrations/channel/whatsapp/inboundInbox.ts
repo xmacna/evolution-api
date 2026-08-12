@@ -327,16 +327,52 @@ export class PrismaInboundInbox {
     state: 'sent' | 'skipped' | 'failed',
     leaseOwner?: string,
     leaseToken?: number,
+    messageData?: Record<string, unknown>,
   ): Promise<boolean> {
     const field = `${sink}State` as 'webhookState' | 'chatwootState' | 'chatbotState';
-    const updated = await this.repository.inboundReceipt.updateMany({
-      where: {
-        id: receiptId,
-        ...(leaseOwner && leaseToken !== undefined ? { leaseOwner, leaseToken, state: 'processing' } : {}),
-      },
-      data: { [field]: state },
+    return this.repository.$transaction(async (tx) => {
+      const updated = await tx.inboundReceipt.updateMany({
+        where: {
+          id: receiptId,
+          ...(leaseOwner && leaseToken !== undefined ? { leaseOwner, leaseToken, state: 'processing' } : {}),
+        },
+        data: { [field]: state },
+      });
+      if (updated.count !== 1) return false;
+      if (messageData) {
+        const receipt = await tx.inboundReceipt.findUnique({
+          where: { id: receiptId },
+          select: { messageRecordId: true },
+        });
+        if (!receipt?.messageRecordId) throw new Error(`Inbound receipt ${receiptId} has no durable Message`);
+        await tx.message.update({ where: { id: receipt.messageRecordId }, data: messageData as any });
+      }
+      return true;
     });
-    return updated.count === 1;
+  }
+
+  public async persistMessage(
+    receiptId: string,
+    leaseOwner: string,
+    leaseToken: number,
+    messageData: Record<string, unknown>,
+  ): Promise<boolean> {
+    return this.repository.$transaction(async (tx) => {
+      // The no-op assignment still takes the receipt row lock and proves that
+      // this worker owns the current fencing token before changing the payload.
+      const fenced = await tx.inboundReceipt.updateMany({
+        where: { id: receiptId, leaseOwner, leaseToken, state: 'processing' },
+        data: { leaseOwner },
+      });
+      if (fenced.count !== 1) return false;
+      const receipt = await tx.inboundReceipt.findUnique({
+        where: { id: receiptId },
+        select: { messageRecordId: true },
+      });
+      if (!receipt?.messageRecordId) throw new Error(`Inbound receipt ${receiptId} has no durable Message`);
+      await tx.message.update({ where: { id: receipt.messageRecordId }, data: messageData as any });
+      return true;
+    });
   }
 
   public async heartbeat(

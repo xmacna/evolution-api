@@ -851,8 +851,19 @@ export class BaileysStartupService extends ChannelStartupService {
     );
     heartbeat.unref();
 
-    const markSink = async (sink: 'webhook' | 'chatwoot' | 'chatbot', state: 'sent' | 'skipped' | 'failed') => {
-      const marked = await this.inboundInbox.markSink(item.receiptId, sink, state, item.leaseOwner, item.leaseToken);
+    const markSink = async (
+      sink: 'webhook' | 'chatwoot' | 'chatbot',
+      state: 'sent' | 'skipped' | 'failed',
+      messageData?: Record<string, unknown>,
+    ) => {
+      const marked = await this.inboundInbox.markSink(
+        item.receiptId,
+        sink,
+        state,
+        item.leaseOwner,
+        item.leaseToken,
+        messageData,
+      );
       if (!marked) throw new Error(`Stale inbound lease while marking ${sink}`);
     };
 
@@ -864,14 +875,19 @@ export class BaileysStartupService extends ChannelStartupService {
           this.localChatwoot?.enabled &&
           !messageRaw.key?.id?.includes('@broadcast')
         ) {
-          await this.chatwootService.eventWhatsapp(
+          const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
             Events.MESSAGES_UPSERT,
             { instanceName: this.instance.name, instanceId: this.instanceId },
             messageRaw,
           );
-          await markSink('chatwoot', 'sent');
+          if (chatwootSentMessage?.id) {
+            messageRaw.chatwootMessageId = chatwootSentMessage.id;
+            messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
+            messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
+          }
+          await markSink('chatwoot', 'sent', messageRaw);
         } else {
-          await markSink('chatwoot', 'skipped');
+          await markSink('chatwoot', 'skipped', messageRaw);
         }
         activeSink = undefined;
       }
@@ -879,7 +895,7 @@ export class BaileysStartupService extends ChannelStartupService {
       if (!['sent', 'skipped'].includes(item.webhookState)) {
         activeSink = 'webhook';
         await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
-        await markSink('webhook', 'sent');
+        await markSink('webhook', 'sent', messageRaw);
         activeSink = undefined;
       }
 
@@ -891,7 +907,7 @@ export class BaileysStartupService extends ChannelStartupService {
           msg: messageRaw,
           pushName: messageRaw.pushName,
         });
-        await markSink('chatbot', 'sent');
+        await markSink('chatbot', 'sent', messageRaw);
         activeSink = undefined;
       }
 
@@ -911,9 +927,30 @@ export class BaileysStartupService extends ChannelStartupService {
     receipt: { id: string; leaseOwner: string; leaseToken: number },
     sink: 'webhook' | 'chatwoot' | 'chatbot',
     state: 'sent' | 'skipped' | 'failed',
+    messageData?: Record<string, unknown>,
   ): Promise<void> {
-    const marked = await this.inboundInbox.markSink(receipt.id, sink, state, receipt.leaseOwner, receipt.leaseToken);
+    const marked = await this.inboundInbox.markSink(
+      receipt.id,
+      sink,
+      state,
+      receipt.leaseOwner,
+      receipt.leaseToken,
+      messageData,
+    );
     if (!marked) throw new Error(`Stale inbound lease while marking ${sink} for ${receipt.id}`);
+  }
+
+  private async persistActiveInboundMessage(
+    receipt: { id: string; leaseOwner: string; leaseToken: number },
+    messageData: Record<string, unknown>,
+  ): Promise<void> {
+    const persisted = await this.inboundInbox.persistMessage(
+      receipt.id,
+      receipt.leaseOwner,
+      receipt.leaseToken,
+      messageData,
+    );
+    if (!persisted) throw new Error(`Stale inbound lease while persisting payload for ${receipt.id}`);
   }
 
   private async completeActiveInbound(receipt: { id: string; leaseOwner: string; leaseToken: number }): Promise<void> {
@@ -1573,6 +1610,11 @@ export class BaileysStartupService extends ChannelStartupService {
             await this.client.readMessages([received.key]);
           }
 
+          // Persist every deterministic enrichment before the first external
+          // sink. A recovered Chatwoot attempt must see the same poll payload
+          // as the original attempt, not the pre-enrichment claim snapshot.
+          if (activeReceipt) await this.persistActiveInboundMessage(activeReceipt, messageRaw);
+
           if (
             this.configService.get<Chatwoot>('CHATWOOT').ENABLED &&
             this.localChatwoot?.enabled &&
@@ -1590,10 +1632,10 @@ export class BaileysStartupService extends ChannelStartupService {
               messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
               messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
             }
-            if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'chatwoot', 'sent');
+            if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'chatwoot', 'sent', messageRaw);
             activeSink = undefined;
           } else if (activeReceipt) {
-            await this.markActiveInboundSink(activeReceipt, 'chatwoot', 'skipped');
+            await this.markActiveInboundSink(activeReceipt, 'chatwoot', 'skipped', messageRaw);
           }
 
           if (this.configService.get<Openai>('OPENAI').ENABLED && received?.message?.audioMessage) {
@@ -1736,9 +1778,13 @@ export class BaileysStartupService extends ChannelStartupService {
           }
           console.log(messageRaw);
 
+          // Base64/media and PN/LID rewriting happen after Chatwoot. Snapshot
+          // them durably before webhook/n8n so any retry is payload-equivalent.
+          if (activeReceipt) await this.persistActiveInboundMessage(activeReceipt, messageRaw);
+
           activeSink = 'webhook';
           await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
-          if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'webhook', 'sent');
+          if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'webhook', 'sent', messageRaw);
           activeSink = undefined;
 
           activeSink = 'chatbot';
@@ -1748,7 +1794,7 @@ export class BaileysStartupService extends ChannelStartupService {
             msg: messageRaw,
             pushName: messageRaw.pushName,
           });
-          if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'chatbot', 'sent');
+          if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'chatbot', 'sent', messageRaw);
           activeSink = undefined;
 
           const contact = await this.prismaRepository.contact.findFirst({
