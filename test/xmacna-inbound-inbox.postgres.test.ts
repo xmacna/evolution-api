@@ -60,6 +60,7 @@ test('840 concurrent deliveries create one receipt and one durable message', { s
     });
     assert.equal(receipts.length, 1);
     assert.ok(receipts[0].messageRecordId);
+    assert.equal(receipts[0].duplicateCount, 839);
     assert.equal(await repository.message.count({ where: { instanceId } }), 1);
   } finally {
     await repository.inboundReceipt.deleteMany({ where: { instanceScope: `instance-${suffix}` } });
@@ -210,8 +211,7 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
     receiptId = stub.receiptId;
     assert.equal(stub.shouldDispatch, false);
 
-    const promoted = await inbox.claim(
-      {
+    const realInput = {
         sourceCluster,
         instanceScope,
         contactScope: 'contact@s.whatsapp.net',
@@ -221,9 +221,14 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
         messageData: messageData(),
         leaseOwner: 'promotion-worker',
         leaseSeconds: 60,
-      },
-      'enforce',
-    );
+      } as const;
+    const concurrentPromotions = await Promise.all([
+      inbox.claim(realInput, 'enforce'),
+      inbox.claim(realInput, 'enforce'),
+    ]);
+    const promoted = concurrentPromotions.find((result) => result.kind === 'promoted')!;
+    assert.equal(concurrentPromotions.filter((result) => result.kind === 'promoted').length, 1);
+    assert.equal(concurrentPromotions.filter((result) => result.kind === 'duplicate').length, 1);
     assert.equal(promoted.kind, 'promoted');
     assert.equal(promoted.shouldDispatch, true);
     assert.equal(await inbox.markDone(promoted.receiptId, 'promotion-worker', promoted.leaseToken!), true);

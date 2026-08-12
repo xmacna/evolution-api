@@ -196,6 +196,7 @@ model InboundReceipt {
   chatwootState   String    @default("pending") @db.VarChar(30)
   chatbotState    String    @default("pending") @db.VarChar(30)
   attempts        Int       @default(0)
+  duplicateCount  Int       @default(0)
   availableAt     DateTime  @default(now()) @db.Timestamp
   leaseOwner      String?   @db.VarChar(100)
   leaseToken      Int       @default(0)
@@ -203,6 +204,7 @@ model InboundReceipt {
   lastError       String?   @db.Text
   createdAt       DateTime  @default(now()) @db.Timestamp
   updatedAt       DateTime  @updatedAt @db.Timestamp
+  lastSeenAt      DateTime  @default(now()) @db.Timestamp
   Message         Message?  @relation(fields: [messageRecordId], references: [id], onDelete: SetNull)
   messageRecordId String?   @unique
 

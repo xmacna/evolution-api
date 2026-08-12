@@ -131,6 +131,10 @@ function isUniqueConstraint(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
+function isWriteConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+}
+
 export class PrismaInboundInbox {
   constructor(private readonly repository: PrismaRepository) {}
 
@@ -189,6 +193,10 @@ export class PrismaInboundInbox {
 
     const kind = evaluateExistingReceipt(existing, input);
     if (kind === 'duplicate') {
+      await this.repository.inboundReceipt.update({
+        where: { id: existing.id },
+        data: { duplicateCount: { increment: 1 }, lastSeenAt: new Date() },
+      });
       if (input.classification === 'real' && input.leaseOwner && existing.state !== 'done') {
         const reclaimed = await this.repository.inboundReceipt.updateMany({
           where: {
@@ -238,59 +246,80 @@ export class PrismaInboundInbox {
         data: {
           state: 'quarantined',
           collisionHash: input.payloadHash,
+          lastSeenAt: new Date(),
           lastError: 'message_id_payload_hash_collision',
         },
       });
       return { kind, receiptId: existing.id, shouldDispatch: false };
     }
 
-    return this.repository.$transaction(
-      async (tx) => {
-        const current = await tx.inboundReceipt.findUnique({
-          where: { sourceCluster_instanceScope_messageId: key },
-        });
-        if (!current) throw new Error('Inbound receipt disappeared during promotion');
-        if (current.classification === 'real') {
-          const currentKind = current.payloadHash === input.payloadHash ? 'duplicate' : 'collision';
-          return {
-            kind: currentKind,
-            receiptId: current.id,
-            messageRecordId: current.messageRecordId ?? undefined,
-            shouldDispatch: false,
-          } as InboundClaimResult;
-        }
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.repository.$transaction(
+          async (tx) => {
+            const current = await tx.inboundReceipt.findUnique({
+              where: { sourceCluster_instanceScope_messageId: key },
+            });
+            if (!current) throw new Error('Inbound receipt disappeared during promotion');
+            if (current.classification === 'real') {
+              const currentKind = current.payloadHash === input.payloadHash ? 'duplicate' : 'collision';
+              await tx.inboundReceipt.update({
+                where: { id: current.id },
+                data:
+                  currentKind === 'duplicate'
+                    ? { duplicateCount: { increment: 1 }, lastSeenAt: new Date() }
+                    : {
+                        state: 'quarantined',
+                        collisionHash: input.payloadHash,
+                        lastSeenAt: new Date(),
+                        lastError: 'message_id_payload_hash_collision',
+                      },
+              });
+              return {
+                kind: currentKind,
+                receiptId: current.id,
+                messageRecordId: current.messageRecordId ?? undefined,
+                shouldDispatch: false,
+              } as InboundClaimResult;
+            }
 
-        let messageRecordId = current.messageRecordId ?? undefined;
-        if (!messageRecordId && input.messageData) {
-          const message = await tx.message.create({ data: input.messageData as any });
-          messageRecordId = message.id;
-        }
-        await tx.inboundReceipt.update({
-          where: { id: current.id },
-          data: {
-            classification: 'real',
-            payloadHash: input.payloadHash,
-            collisionHash: null,
-            state: 'processing',
-            contactScope: input.contactScope,
-            messageRecordId,
-            leaseOwner: input.leaseOwner,
-            attempts: 1,
-            leaseToken: { increment: 1 },
-            leaseExpiresAt: new Date(Date.now() + (input.leaseSeconds ?? 60) * 1000),
+            let messageRecordId = current.messageRecordId ?? undefined;
+            if (!messageRecordId && input.messageData) {
+              const message = await tx.message.create({ data: input.messageData as any });
+              messageRecordId = message.id;
+            }
+            await tx.inboundReceipt.update({
+              where: { id: current.id },
+              data: {
+                classification: 'real',
+                payloadHash: input.payloadHash,
+                collisionHash: null,
+                state: 'processing',
+                contactScope: input.contactScope,
+                messageRecordId,
+                leaseOwner: input.leaseOwner,
+                attempts: 1,
+                leaseToken: { increment: 1 },
+                leaseExpiresAt: new Date(Date.now() + (input.leaseSeconds ?? 60) * 1000),
+                lastSeenAt: new Date(),
+              },
+            });
+            const promoted = await tx.inboundReceipt.findUniqueOrThrow({ where: { id: current.id } });
+            return {
+              kind: 'promoted',
+              receiptId: current.id,
+              messageRecordId,
+              shouldDispatch: true,
+              leaseToken: promoted.leaseToken,
+            };
           },
-        });
-        const promoted = await tx.inboundReceipt.findUniqueOrThrow({ where: { id: current.id } });
-        return {
-          kind: 'promoted',
-          receiptId: current.id,
-          messageRecordId,
-          shouldDispatch: true,
-          leaseToken: promoted.leaseToken,
-        };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (!isWriteConflict(error) || attempt === 2) throw error;
+      }
+    }
+    throw new Error('Inbound receipt promotion retry exhausted');
   }
 
   public async markSink(
@@ -486,12 +515,22 @@ export class PrismaInboundInbox {
     if (kind === 'collision') {
       await this.repository.inboundReceipt.update({
         where: { id: existing.id },
-        data: { state: 'shadow_collision', collisionHash: input.payloadHash },
+        data: { state: 'shadow_collision', collisionHash: input.payloadHash, lastSeenAt: new Date() },
       });
     } else if (kind === 'promoted') {
       await this.repository.inboundReceipt.update({
         where: { id: existing.id },
-        data: { classification: 'real', payloadHash: input.payloadHash, state: 'shadow_promoted' },
+        data: {
+          classification: 'real',
+          payloadHash: input.payloadHash,
+          state: 'shadow_promoted',
+          lastSeenAt: new Date(),
+        },
+      });
+    } else {
+      await this.repository.inboundReceipt.update({
+        where: { id: existing.id },
+        data: { duplicateCount: { increment: 1 }, lastSeenAt: new Date() },
       });
     }
     return {

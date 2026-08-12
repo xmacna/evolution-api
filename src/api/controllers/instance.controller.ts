@@ -1,4 +1,5 @@
 import { InstanceDto, SetInboundInboxModeDto, SetPresenceDto } from '@api/dto/instance.dto';
+import { normalizeInstanceScope } from '@api/integrations/channel/whatsapp/inboundInbox';
 import { ChatwootService } from '@api/integrations/chatbot/chatwoot/services/chatwoot.service';
 import { ProviderFiles } from '@api/provider/sessions';
 import { PrismaRepository } from '@api/repository/repository.service';
@@ -7,7 +8,7 @@ import { CacheService } from '@api/services/cache.service';
 import { WAMonitoringService } from '@api/services/monitor.service';
 import { SettingsService } from '@api/services/settings.service';
 import { Events, Integration, wa } from '@api/types/wa.types';
-import { Auth, Chatwoot, ConfigService, HttpServer, WaBusiness } from '@config/env.config';
+import { Auth, Chatwoot, ConfigService, HttpServer, InboundInbox, WaBusiness } from '@config/env.config';
 import { Logger } from '@config/logger.config';
 import { BadRequestException, InternalServerErrorException, UnauthorizedException } from '@exceptions';
 import { delay } from 'baileys';
@@ -326,6 +327,47 @@ export class InstanceController {
       throw new InternalServerErrorException('Inbound inbox mode readback mismatch');
     }
     return persisted;
+  }
+
+  public async inboundInboxStats(instanceData: InstanceDto) {
+    const instance = await this.prismaRepository.instance.findUniqueOrThrow({
+      where: { name: instanceData.instanceName },
+      select: { name: true, inboundInboxMode: true },
+    });
+    const sourceCluster = this.configService.get<InboundInbox>('INBOUND_INBOX').SOURCE_CLUSTER;
+    const instanceScope = normalizeInstanceScope(instance.name);
+    const where = { sourceCluster, instanceScope };
+    const [states, totals, oldestPending, webhookFailed, chatwootFailed, chatbotFailed] = await Promise.all([
+      this.prismaRepository.inboundReceipt.groupBy({ where, by: ['state'], _count: { _all: true } }),
+      this.prismaRepository.inboundReceipt.aggregate({
+        where,
+        _count: { _all: true },
+        _sum: { duplicateCount: true },
+        _max: { lastSeenAt: true },
+      }),
+      this.prismaRepository.inboundReceipt.findFirst({
+        where: { ...where, state: { in: ['received', 'processing', 'failed'] } },
+        orderBy: { updatedAt: 'asc' },
+        select: { updatedAt: true },
+      }),
+      this.prismaRepository.inboundReceipt.count({ where: { ...where, webhookState: 'failed' } }),
+      this.prismaRepository.inboundReceipt.count({ where: { ...where, chatwootState: 'failed' } }),
+      this.prismaRepository.inboundReceipt.count({ where: { ...where, chatbotState: 'failed' } }),
+    ]);
+    return {
+      instance: instance.name,
+      mode: instance.inboundInboxMode,
+      sourceCluster,
+      instanceScope,
+      totals: { receipts: totals._count._all, duplicates: totals._sum.duplicateCount || 0 },
+      lastInboundSeenAt: totals._max.lastSeenAt?.toISOString() || null,
+      states: Object.fromEntries(states.map((row) => [row.state, row._count._all])),
+      failedSinks: { webhook: webhookFailed, chatwoot: chatwootFailed, chatbot: chatbotFailed },
+      oldestPendingAgeSeconds: oldestPending
+        ? Math.max(0, Math.floor((Date.now() - oldestPending.updatedAt.getTime()) / 1000))
+        : 0,
+      sampledAt: new Date().toISOString(),
+    };
   }
 
   public async connectToWhatsapp({ instanceName, number = null }: InstanceDto) {
