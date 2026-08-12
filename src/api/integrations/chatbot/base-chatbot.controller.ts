@@ -919,18 +919,24 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
 
       // Process with debounce if needed
       if (debounceTime && debounceTime > 0) {
-        this.processDebounce(this.userMessageDebounce, content, remoteJid, debounceTime, async (debouncedContent) => {
-          await this.processBot(
-            this.waMonitor.waInstances[instance.instanceName],
-            remoteJid,
-            findBot,
-            session,
-            mergedSettings,
-            debouncedContent,
-            msg?.pushName,
-            msg,
-          );
-        });
+        await this.processDebounce(
+          this.userMessageDebounce,
+          content,
+          remoteJid,
+          debounceTime,
+          async (debouncedContent) => {
+            await this.processBot(
+              this.waMonitor.waInstances[instance.instanceName],
+              remoteJid,
+              findBot,
+              session,
+              mergedSettings,
+              debouncedContent,
+              msg?.pushName,
+              msg,
+            );
+          },
+        );
       } else {
         await this.processBot(
           this.waMonitor.waInstances[instance.instanceName],
@@ -945,6 +951,9 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
       }
     } catch (error) {
       this.logger.error(error);
+      if (this.waMonitor.waInstances[instance.instanceName]?.instance?.inboundInboxMode === 'enforce') {
+        throw error;
+      }
     }
   }
 }

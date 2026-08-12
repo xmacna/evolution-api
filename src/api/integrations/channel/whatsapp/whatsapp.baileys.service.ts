@@ -157,6 +157,7 @@ import { BaileysMessageProcessor } from './baileysMessage.processor';
 import {
   classifyInboundMessage,
   inboundPayloadHash,
+  normalizeContactScope,
   normalizeInstanceScope,
   PrismaInboundInbox,
   resolveInboundMode,
@@ -235,6 +236,9 @@ async function getVideoDuration(input: Buffer | string | Readable): Promise<numb
 export class BaileysStartupService extends ChannelStartupService {
   private messageProcessor = new BaileysMessageProcessor();
   private readonly inboundInbox: PrismaInboundInbox;
+  private inboundWorkerTimer?: NodeJS.Timeout;
+  private inboundWorkerRunning = false;
+  private readonly inboundWorkerOwner = `baileys-${v4()}`;
 
   constructor(
     public readonly configService: ConfigService,
@@ -276,6 +280,8 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async logoutInstance() {
     this.messageProcessor.onDestroy();
+    if (this.inboundWorkerTimer) clearInterval(this.inboundWorkerTimer);
+    this.inboundWorkerTimer = undefined;
     await this.client?.logout('Log out instance: ' + this.instanceName);
 
     this.client?.ws?.close();
@@ -742,7 +748,9 @@ export class BaileysStartupService extends ChannelStartupService {
         onMessageReceive: this.messageHandle['messages.upsert'].bind(this),
       });
 
-      return await this.createClient(number);
+      const client = await this.createClient(number);
+      this.startInboundInboxWorker();
+      return client;
     } catch (error) {
       this.logger.error(error);
       throw new InternalServerErrorException(error?.toString());
@@ -751,11 +759,140 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async reloadConnection(): Promise<WASocket> {
     try {
-      return await this.createClient(this.phoneNumber);
+      const client = await this.createClient(this.phoneNumber);
+      this.startInboundInboxWorker();
+      return client;
     } catch (error) {
       this.logger.error(error);
       throw new InternalServerErrorException(error?.toString());
     }
+  }
+
+  private startInboundInboxWorker(): void {
+    if (this.instance.inboundInboxMode !== 'enforce' || this.inboundWorkerTimer) return;
+    const run = () => void this.runInboundInboxWorker().catch((error) => this.logger.error(`Inbound worker: ${error}`));
+    this.inboundWorkerTimer = setInterval(run, 1000);
+    this.inboundWorkerTimer.unref();
+    run();
+  }
+
+  private async runInboundInboxWorker(): Promise<void> {
+    if (this.inboundWorkerRunning || this.instance.inboundInboxMode !== 'enforce') return;
+    this.inboundWorkerRunning = true;
+    const config = this.configService.get<InboundInbox>('INBOUND_INBOX');
+    const instanceScope = normalizeInstanceScope(this.instance.name);
+    try {
+      for (let processed = 0; processed < 25; processed += 1) {
+        const item = await this.inboundInbox.leaseNext(
+          config.SOURCE_CLUSTER,
+          instanceScope,
+          this.inboundWorkerOwner,
+          config.LEASE_SECONDS,
+          config.MAX_ATTEMPTS,
+        );
+        if (!item) break;
+        await this.dispatchRecoveredInbound(item, config);
+      }
+    } finally {
+      this.inboundWorkerRunning = false;
+    }
+  }
+
+  private async dispatchRecoveredInbound(
+    item: {
+      receiptId: string;
+      leaseOwner: string;
+      leaseToken: number;
+      webhookState: string;
+      chatwootState: string;
+      chatbotState: string;
+      message: Record<string, unknown>;
+    },
+    config: InboundInbox,
+  ): Promise<void> {
+    const messageRaw = item.message as any;
+    let activeSink: 'webhook' | 'chatwoot' | 'chatbot' | undefined;
+    const heartbeat = setInterval(
+      () => {
+        void this.inboundInbox
+          .heartbeat(item.receiptId, item.leaseOwner, item.leaseToken, config.LEASE_SECONDS)
+          .then((renewed) => {
+            if (!renewed) this.logger.error(`Recovered inbound lease fencing lost for ${item.receiptId}`);
+          })
+          .catch((error) => this.logger.error(`Recovered inbound heartbeat failed: ${error}`));
+      },
+      Math.max(1000, Math.floor((config.LEASE_SECONDS * 1000) / 3)),
+    );
+    heartbeat.unref();
+
+    const markSink = async (sink: 'webhook' | 'chatwoot' | 'chatbot', state: 'sent' | 'skipped' | 'failed') => {
+      const marked = await this.inboundInbox.markSink(item.receiptId, sink, state, item.leaseOwner, item.leaseToken);
+      if (!marked) throw new Error(`Stale inbound lease while marking ${sink}`);
+    };
+
+    try {
+      if (!['sent', 'skipped'].includes(item.chatwootState)) {
+        activeSink = 'chatwoot';
+        if (
+          this.configService.get<Chatwoot>('CHATWOOT').ENABLED &&
+          this.localChatwoot?.enabled &&
+          !messageRaw.key?.id?.includes('@broadcast')
+        ) {
+          await this.chatwootService.eventWhatsapp(
+            Events.MESSAGES_UPSERT,
+            { instanceName: this.instance.name, instanceId: this.instanceId },
+            messageRaw,
+          );
+          await markSink('chatwoot', 'sent');
+        } else {
+          await markSink('chatwoot', 'skipped');
+        }
+        activeSink = undefined;
+      }
+
+      if (!['sent', 'skipped'].includes(item.webhookState)) {
+        activeSink = 'webhook';
+        await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
+        await markSink('webhook', 'sent');
+        activeSink = undefined;
+      }
+
+      if (!['sent', 'skipped'].includes(item.chatbotState)) {
+        activeSink = 'chatbot';
+        await chatbotController.emit({
+          instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+          remoteJid: messageRaw.key.remoteJid,
+          msg: messageRaw,
+          pushName: messageRaw.pushName,
+        });
+        await markSink('chatbot', 'sent');
+        activeSink = undefined;
+      }
+
+      const done = await this.inboundInbox.markDone(item.receiptId, item.leaseOwner, item.leaseToken);
+      if (!done) throw new Error(`Stale inbound lease while completing ${item.receiptId}`);
+    } catch (error) {
+      if (activeSink) {
+        await this.inboundInbox.markSink(item.receiptId, activeSink, 'failed', item.leaseOwner, item.leaseToken);
+      }
+      await this.inboundInbox.markFailed(item.receiptId, item.leaseOwner, item.leaseToken, error, config.MAX_ATTEMPTS);
+    } finally {
+      clearInterval(heartbeat);
+    }
+  }
+
+  private async markActiveInboundSink(
+    receipt: { id: string; leaseOwner: string; leaseToken: number },
+    sink: 'webhook' | 'chatwoot' | 'chatbot',
+    state: 'sent' | 'skipped' | 'failed',
+  ): Promise<void> {
+    const marked = await this.inboundInbox.markSink(receipt.id, sink, state, receipt.leaseOwner, receipt.leaseToken);
+    if (!marked) throw new Error(`Stale inbound lease while marking ${sink} for ${receipt.id}`);
+  }
+
+  private async completeActiveInbound(receipt: { id: string; leaseOwner: string; leaseToken: number }): Promise<void> {
+    const done = await this.inboundInbox.markDone(receipt.id, receipt.leaseOwner, receipt.leaseToken);
+    if (!done) throw new Error(`Stale inbound lease while completing ${receipt.id}`);
   }
 
   private readonly chatHandle = {
@@ -1096,12 +1233,17 @@ export class BaileysStartupService extends ChannelStartupService {
       let activeReceipt:
         | { id: string; leaseOwner: string; leaseToken: number; mode: 'off' | 'shadow' | 'enforce' }
         | undefined;
+      let activeSink: 'webhook' | 'chatwoot' | 'chatbot' | undefined;
+      let heartbeatTimer: NodeJS.Timeout | undefined;
       try {
         for (const received of messages) {
           const inboundConfig = this.configService.get<InboundInbox>('INBOUND_INBOX');
           const inboundMode = resolveInboundMode(this.instance.inboundInboxMode, inboundConfig.MODE);
           const inboundClassification = classifyInboundMessage(received);
           const inboundMessageId = received.key?.id;
+          const inboundContactScope = normalizeContactScope(
+            (received.key as any)?.remoteJidAlt || received.key?.remoteJid,
+          );
           const inboundIdentity = inboundMessageId
             ? {
                 sourceCluster: inboundConfig.SOURCE_CLUSTER,
@@ -1114,6 +1256,7 @@ export class BaileysStartupService extends ChannelStartupService {
             await this.inboundInbox.claim(
               {
                 ...inboundIdentity,
+                contactScope: inboundContactScope,
                 classification: inboundClassification,
                 payloadHash: inboundPayloadHash(received),
               },
@@ -1246,6 +1389,7 @@ export class BaileysStartupService extends ChannelStartupService {
             const claim = await this.inboundInbox.claim(
               {
                 ...inboundIdentity,
+                contactScope: inboundContactScope,
                 classification: inboundClassification,
                 payloadHash: inboundPayloadHash(received),
                 messageData,
@@ -1262,6 +1406,18 @@ export class BaileysStartupService extends ChannelStartupService {
                 leaseToken: claim.leaseToken,
                 mode: inboundMode,
               };
+              heartbeatTimer = setInterval(
+                () => {
+                  void this.inboundInbox
+                    .heartbeat(claim.receiptId, leaseOwner, claim.leaseToken!, inboundConfig.LEASE_SECONDS)
+                    .then((renewed) => {
+                      if (!renewed) this.logger.error(`Inbound lease fencing lost for receipt ${claim.receiptId}`);
+                    })
+                    .catch((error) => this.logger.error(`Inbound lease heartbeat failed: ${error}`));
+                },
+                Math.max(1000, Math.floor((inboundConfig.LEASE_SECONDS * 1000) / 3)),
+              );
+              heartbeatTimer.unref();
             }
             if (!claim.shouldDispatch) {
               this.logger.info(
@@ -1396,6 +1552,7 @@ export class BaileysStartupService extends ChannelStartupService {
             this.localChatwoot?.enabled &&
             !received.key.id.includes('@broadcast')
           ) {
+            activeSink = 'chatwoot';
             const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
               Events.MESSAGES_UPSERT,
               { instanceName: this.instance.name, instanceId: this.instanceId },
@@ -1407,9 +1564,10 @@ export class BaileysStartupService extends ChannelStartupService {
               messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
               messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
             }
-            if (activeReceipt) await this.inboundInbox.markSink(activeReceipt.id, 'chatwoot', 'sent');
+            if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'chatwoot', 'sent');
+            activeSink = undefined;
           } else if (activeReceipt) {
-            await this.inboundInbox.markSink(activeReceipt.id, 'chatwoot', 'skipped');
+            await this.markActiveInboundSink(activeReceipt, 'chatwoot', 'skipped');
           }
 
           if (this.configService.get<Openai>('OPENAI').ENABLED && received?.message?.audioMessage) {
@@ -1552,16 +1710,20 @@ export class BaileysStartupService extends ChannelStartupService {
           }
           console.log(messageRaw);
 
+          activeSink = 'webhook';
           await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
-          if (activeReceipt) await this.inboundInbox.markSink(activeReceipt.id, 'webhook', 'sent');
+          if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'webhook', 'sent');
+          activeSink = undefined;
 
+          activeSink = 'chatbot';
           await chatbotController.emit({
             instance: { instanceName: this.instance.name, instanceId: this.instanceId },
             remoteJid: messageRaw.key.remoteJid,
             msg: messageRaw,
             pushName: messageRaw.pushName,
           });
-          if (activeReceipt) await this.inboundInbox.markSink(activeReceipt.id, 'chatbot', 'sent');
+          if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'chatbot', 'sent');
+          activeSink = undefined;
 
           const contact = await this.prismaRepository.contact.findFirst({
             where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },
@@ -1581,7 +1743,9 @@ export class BaileysStartupService extends ChannelStartupService {
 
           if (contactRaw.remoteJid === 'status@broadcast') {
             if (activeReceipt) {
-              await this.inboundInbox.markDone(activeReceipt.id, activeReceipt.leaseOwner, activeReceipt.leaseToken);
+              await this.completeActiveInbound(activeReceipt);
+              if (heartbeatTimer) clearInterval(heartbeatTimer);
+              heartbeatTimer = undefined;
               activeReceipt = undefined;
             }
             continue;
@@ -1617,7 +1781,9 @@ export class BaileysStartupService extends ChannelStartupService {
               });
 
             if (activeReceipt) {
-              await this.inboundInbox.markDone(activeReceipt.id, activeReceipt.leaseOwner, activeReceipt.leaseToken);
+              await this.completeActiveInbound(activeReceipt);
+              if (heartbeatTimer) clearInterval(heartbeatTimer);
+              heartbeatTimer = undefined;
               activeReceipt = undefined;
             }
             continue;
@@ -1632,17 +1798,24 @@ export class BaileysStartupService extends ChannelStartupService {
               create: contactRaw,
             });
           if (activeReceipt) {
-            await this.inboundInbox.markDone(activeReceipt.id, activeReceipt.leaseOwner, activeReceipt.leaseToken);
+            await this.completeActiveInbound(activeReceipt);
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
+            heartbeatTimer = undefined;
             activeReceipt = undefined;
           }
         }
       } catch (error) {
         if (activeReceipt) {
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          if (activeSink) {
+            await this.markActiveInboundSink(activeReceipt, activeSink, 'failed');
+          }
           await this.inboundInbox.markFailed(
             activeReceipt.id,
             activeReceipt.leaseOwner,
             activeReceipt.leaseToken,
             error,
+            this.configService.get<InboundInbox>('INBOUND_INBOX').MAX_ATTEMPTS,
           );
         }
         this.logger.error(error);

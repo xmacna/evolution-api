@@ -5,12 +5,14 @@ import {
   classifyInboundMessage,
   evaluateExistingReceipt,
   inboundPayloadHash,
+  normalizeContactScope,
   normalizeInstanceScope,
   resolveInboundMode,
 } from '../src/api/integrations/channel/whatsapp/inboundInbox';
 
 test('normalizes stable instance scope independently from internal instance ids', () => {
   assert.equal(normalizeInstanceScope('  FÁBI   FontesEnergia  '), 'fábi-fontesenergia');
+  assert.equal(normalizeContactScope(' 5511999999999@S.WHATSAPP.NET '), '5511999999999@s.whatsapp.net');
 });
 
 test('classifies real, stub, protocol and internal control payloads', () => {

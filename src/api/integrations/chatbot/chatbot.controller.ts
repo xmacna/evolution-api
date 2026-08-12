@@ -91,19 +91,15 @@ export class ChatbotController {
       pushName,
       isIntegration,
     };
-    evolutionBotController.emit(emitData);
-
-    typebotController.emit(emitData);
-
-    openaiController.emit(emitData);
-
-    difyController.emit(emitData);
-
-    n8nController.emit(emitData);
-
-    evoaiController.emit(emitData);
-
-    flowiseController.emit(emitData);
+    await Promise.all([
+      evolutionBotController.emit(emitData),
+      typebotController.emit(emitData),
+      openaiController.emit(emitData),
+      difyController.emit(emitData),
+      n8nController.emit(emitData),
+      evoaiController.emit(emitData),
+      flowiseController.emit(emitData),
+    ]);
   }
 
   public processDebounce(
@@ -112,25 +108,36 @@ export class ChatbotController {
     remoteJid: string,
     debounceTime: number,
     callback: any,
-  ) {
-    if (userMessageDebounce[remoteJid]) {
-      userMessageDebounce[remoteJid].message += `\n${content}`;
-      this.logger.log('message debounced: ' + userMessageDebounce[remoteJid].message);
-      clearTimeout(userMessageDebounce[remoteJid].timeoutId);
-    } else {
-      userMessageDebounce[remoteJid] = {
-        message: content,
-        timeoutId: null,
-      };
-    }
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (userMessageDebounce[remoteJid]) {
+        userMessageDebounce[remoteJid].message += `\n${content}`;
+        userMessageDebounce[remoteJid].waiters.push({ resolve, reject });
+        userMessageDebounce[remoteJid].callback = callback;
+        this.logger.log('message debounced: ' + userMessageDebounce[remoteJid].message);
+        clearTimeout(userMessageDebounce[remoteJid].timeoutId);
+      } else {
+        userMessageDebounce[remoteJid] = {
+          message: content,
+          timeoutId: null,
+          callback,
+          waiters: [{ resolve, reject }],
+        };
+      }
 
-    userMessageDebounce[remoteJid].timeoutId = setTimeout(() => {
-      const myQuestion = userMessageDebounce[remoteJid].message;
-      this.logger.log('Debounce complete. Processing message: ' + myQuestion);
-
-      delete userMessageDebounce[remoteJid];
-      callback(myQuestion);
-    }, debounceTime * 1000);
+      userMessageDebounce[remoteJid].timeoutId = setTimeout(async () => {
+        const entry = userMessageDebounce[remoteJid];
+        const myQuestion = entry.message;
+        this.logger.log('Debounce complete. Processing message: ' + myQuestion);
+        delete userMessageDebounce[remoteJid];
+        try {
+          await entry.callback(myQuestion);
+          entry.waiters.forEach((waiter) => waiter.resolve());
+        } catch (error) {
+          entry.waiters.forEach((waiter) => waiter.reject(error));
+        }
+      }, debounceTime * 1000);
+    });
   }
 
   public checkIgnoreJids(ignoreJids: any, remoteJid: string) {

@@ -14,6 +14,7 @@ export type InboundIdentity = {
 };
 
 export type InboundClaimInput = InboundIdentity & {
+  contactScope: string;
   classification: InboundClassification;
   payloadHash: string;
   messageData?: Record<string, unknown>;
@@ -27,6 +28,16 @@ export type InboundClaimResult = {
   messageRecordId?: string;
   shouldDispatch: boolean;
   leaseToken?: number;
+};
+
+export type InboundWorkItem = {
+  receiptId: string;
+  leaseOwner: string;
+  leaseToken: number;
+  webhookState: string;
+  chatwootState: string;
+  chatbotState: string;
+  message: Record<string, unknown>;
 };
 
 type ExistingReceipt = {
@@ -61,6 +72,10 @@ function canonicalize(value: unknown): unknown {
 
 export function normalizeInstanceScope(instanceName: string): string {
   return instanceName.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+export function normalizeContactScope(remoteJid: string | null | undefined): string {
+  return (remoteJid || 'unknown').normalize('NFKC').trim().toLowerCase();
 }
 
 export function classifyInboundMessage(received: WAMessage): InboundClassification {
@@ -130,11 +145,13 @@ export class PrismaInboundInbox {
             data: {
               sourceCluster: input.sourceCluster,
               instanceScope: input.instanceScope,
+              contactScope: input.contactScope,
               messageId: input.messageId,
               classification: input.classification,
               payloadHash: input.payloadHash,
               state: input.classification === 'real' ? 'processing' : 'observed',
               leaseOwner: input.classification === 'real' ? input.leaseOwner : undefined,
+              attempts: input.classification === 'real' ? 1 : 0,
               leaseToken: input.classification === 'real' ? 1 : 0,
               leaseExpiresAt:
                 input.classification === 'real' ? new Date(Date.now() + (input.leaseSeconds ?? 60) * 1000) : undefined,
@@ -180,6 +197,7 @@ export class PrismaInboundInbox {
           },
           data: {
             state: 'processing',
+            contactScope: input.contactScope,
             attempts: { increment: 1 },
             leaseOwner: input.leaseOwner,
             leaseToken: { increment: 1 },
@@ -254,8 +272,10 @@ export class PrismaInboundInbox {
             payloadHash: input.payloadHash,
             collisionHash: null,
             state: 'processing',
+            contactScope: input.contactScope,
             messageRecordId,
             leaseOwner: input.leaseOwner,
+            attempts: 1,
             leaseToken: { increment: 1 },
             leaseExpiresAt: new Date(Date.now() + (input.leaseSeconds ?? 60) * 1000),
           },
@@ -276,10 +296,123 @@ export class PrismaInboundInbox {
   public async markSink(
     receiptId: string,
     sink: 'webhook' | 'chatwoot' | 'chatbot',
-    state: 'sent' | 'skipped',
-  ): Promise<void> {
+    state: 'sent' | 'skipped' | 'failed',
+    leaseOwner?: string,
+    leaseToken?: number,
+  ): Promise<boolean> {
     const field = `${sink}State` as 'webhookState' | 'chatwootState' | 'chatbotState';
-    await this.repository.inboundReceipt.update({ where: { id: receiptId }, data: { [field]: state } });
+    const updated = await this.repository.inboundReceipt.updateMany({
+      where: {
+        id: receiptId,
+        ...(leaseOwner && leaseToken !== undefined ? { leaseOwner, leaseToken, state: 'processing' } : {}),
+      },
+      data: { [field]: state },
+    });
+    return updated.count === 1;
+  }
+
+  public async heartbeat(
+    receiptId: string,
+    leaseOwner: string,
+    leaseToken: number,
+    leaseSeconds: number,
+  ): Promise<boolean> {
+    const updated = await this.repository.inboundReceipt.updateMany({
+      where: { id: receiptId, leaseOwner, leaseToken, state: 'processing' },
+      data: { leaseExpiresAt: new Date(Date.now() + leaseSeconds * 1000) },
+    });
+    return updated.count === 1;
+  }
+
+  public async leaseNext(
+    sourceCluster: string,
+    instanceScope: string,
+    leaseOwner: string,
+    leaseSeconds: number,
+    maxAttempts: number,
+  ): Promise<InboundWorkItem | null> {
+    const provider = process.env.DATABASE_PROVIDER || 'postgresql';
+    return this.repository.$transaction(
+      async (tx) => {
+        const rows =
+          provider === 'mysql'
+            ? await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+                SELECT candidate.id
+                FROM InboundReceipt candidate
+                WHERE candidate.sourceCluster = ${sourceCluster}
+                  AND candidate.instanceScope = ${instanceScope}
+                  AND candidate.classification = 'real'
+                  AND candidate.messageRecordId IS NOT NULL
+                  AND candidate.attempts < ${maxAttempts}
+                  AND (
+                    (candidate.state = 'failed' AND candidate.availableAt <= CURRENT_TIMESTAMP)
+                    OR (candidate.state = 'processing' AND candidate.leaseExpiresAt < CURRENT_TIMESTAMP)
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM InboundReceipt previous
+                    WHERE previous.sourceCluster = candidate.sourceCluster
+                      AND previous.instanceScope = candidate.instanceScope
+                      AND previous.contactScope = candidate.contactScope
+                      AND previous.state IN ('received', 'processing', 'failed')
+                      AND (previous.createdAt < candidate.createdAt OR
+                        (previous.createdAt = candidate.createdAt AND previous.id < candidate.id))
+                  )
+                ORDER BY candidate.createdAt, candidate.id
+                LIMIT 1 FOR UPDATE SKIP LOCKED
+              `)
+            : await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+                SELECT candidate.id
+                FROM "InboundReceipt" candidate
+                WHERE candidate."sourceCluster" = ${sourceCluster}
+                  AND candidate."instanceScope" = ${instanceScope}
+                  AND candidate.classification = 'real'
+                  AND candidate."messageRecordId" IS NOT NULL
+                  AND candidate.attempts < ${maxAttempts}
+                  AND (
+                    (candidate.state = 'failed' AND candidate."availableAt" <= CURRENT_TIMESTAMP)
+                    OR (candidate.state = 'processing' AND candidate."leaseExpiresAt" < CURRENT_TIMESTAMP)
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM "InboundReceipt" previous
+                    WHERE previous."sourceCluster" = candidate."sourceCluster"
+                      AND previous."instanceScope" = candidate."instanceScope"
+                      AND previous."contactScope" = candidate."contactScope"
+                      AND previous.state IN ('received', 'processing', 'failed')
+                      AND (previous."createdAt" < candidate."createdAt" OR
+                        (previous."createdAt" = candidate."createdAt" AND previous.id < candidate.id))
+                  )
+                ORDER BY candidate."createdAt", candidate.id
+                LIMIT 1 FOR UPDATE SKIP LOCKED
+              `);
+        if (rows.length === 0) return null;
+
+        const updated = await tx.inboundReceipt.update({
+          where: { id: rows[0].id },
+          data: {
+            state: 'processing',
+            attempts: { increment: 1 },
+            leaseOwner,
+            leaseToken: { increment: 1 },
+            leaseExpiresAt: new Date(Date.now() + leaseSeconds * 1000),
+            lastError: null,
+          },
+          include: { Message: true },
+        });
+        if (!updated.Message) throw new Error(`Inbound receipt ${updated.id} has no durable Message`);
+        const message = { ...updated.Message } as any;
+        delete message.id;
+        return {
+          receiptId: updated.id,
+          leaseOwner,
+          leaseToken: updated.leaseToken,
+          webhookState: updated.webhookState,
+          chatwootState: updated.chatwootState,
+          chatbotState: updated.chatbotState,
+          message,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
   }
 
   public async markDone(receiptId: string, leaseOwner: string, leaseToken: number): Promise<boolean> {
@@ -290,11 +423,26 @@ export class PrismaInboundInbox {
     return updated.count === 1;
   }
 
-  public async markFailed(receiptId: string, leaseOwner: string, leaseToken: number, error: unknown): Promise<boolean> {
+  public async markFailed(
+    receiptId: string,
+    leaseOwner: string,
+    leaseToken: number,
+    error: unknown,
+    maxAttempts = 10,
+    baseBackoffSeconds = 2,
+  ): Promise<boolean> {
+    const current = await this.repository.inboundReceipt.findFirst({
+      where: { id: receiptId, leaseOwner, leaseToken, state: 'processing' },
+      select: { attempts: true },
+    });
+    if (!current) return false;
+    const dead = current.attempts >= maxAttempts;
+    const delaySeconds = Math.min(300, baseBackoffSeconds * 2 ** Math.max(0, current.attempts - 1));
     const updated = await this.repository.inboundReceipt.updateMany({
       where: { id: receiptId, leaseOwner, leaseToken, state: 'processing' },
       data: {
-        state: 'failed',
+        state: dead ? 'dead' : 'failed',
+        availableAt: dead ? new Date() : new Date(Date.now() + delaySeconds * 1000),
         leaseOwner: null,
         leaseExpiresAt: null,
         lastError: String(error instanceof Error ? error.message : error).slice(0, 4000),
@@ -317,6 +465,7 @@ export class PrismaInboundInbox {
         const created = await this.repository.inboundReceipt.create({
           data: {
             ...key,
+            contactScope: input.contactScope,
             classification: input.classification,
             payloadHash: input.payloadHash,
             state: 'shadow_seen',

@@ -186,6 +186,7 @@ model InboundReceipt {
   id              String    @id @default(cuid())
   sourceCluster   String    @db.VarChar(64)
   instanceScope   String    @db.VarChar(255)
+  contactScope    String    @db.VarChar(255)
   messageId       String    @db.VarChar(255)
   classification  String    @db.VarChar(20)
   payloadHash     String    @db.Char(64)
@@ -208,6 +209,7 @@ model InboundReceipt {
   @@unique([sourceCluster, instanceScope, messageId])
   @@index([state, availableAt])
   @@index([instanceScope, createdAt])
+  @@index([instanceScope, contactScope, createdAt])
 }
 
 model MessageUpdate {

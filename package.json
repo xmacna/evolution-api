@@ -15,6 +15,8 @@
     "test": "tsx watch ./test/all.test.ts",
     "test:xmacna-compat": "node --test test/xmacna-baileys-compat.test.cjs",
     "test:xmacna-inbox": "tsx --test test/xmacna-inbound-inbox.test.ts test/xmacna-baileys-message-processor.test.ts",
+    "test:xmacna-inbox:postgres": "tsx --test test/xmacna-inbound-inbox.postgres.test.ts",
+    "inbound-inbox:maintenance": "tsx src/cli/inboundInboxMaintenance.ts",
     "lint": "eslint --fix --ext .ts src",
     "lint:check": "eslint --ext .ts src",
     "commit": "cz",
