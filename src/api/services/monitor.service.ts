@@ -255,10 +255,12 @@ export class WAMonitoringService {
           token: data.hash,
           clientName: clientName,
           businessId: data.businessId,
+          inboundInboxMode: data.inboundInboxMode || 'off',
         },
       });
     } catch (error) {
       this.logger.error(error);
+      throw error;
     }
   }
 

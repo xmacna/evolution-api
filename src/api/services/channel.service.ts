@@ -105,6 +105,10 @@ export class ChannelStartupService {
     this.instance.integration = integration;
   }
 
+  public setInboundInboxMode(mode: 'off' | 'shadow' | 'enforce'): void {
+    this.instance.inboundInboxMode = mode;
+  }
+
   public get integration() {
     return this.instance.integration;
   }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { validate } from 'jsonschema';
 
 import {
   classifyInboundMessage,
@@ -9,6 +10,7 @@ import {
   normalizeInstanceScope,
   resolveInboundMode,
 } from '../src/api/integrations/channel/whatsapp/inboundInbox';
+import { inboundInboxModeSchema, instanceSchema } from '../src/validate/instance.schema';
 
 test('normalizes stable instance scope independently from internal instance ids', () => {
   assert.equal(normalizeInstanceScope('  FÁBI   FontesEnergia  '), 'fábi-fontesenergia');
@@ -64,4 +66,11 @@ test('invalid persisted modes fail closed to the configured fallback', () => {
   assert.equal(resolveInboundMode('enforce', 'off'), 'enforce');
   assert.equal(resolveInboundMode('invalid', 'shadow'), 'shadow');
   assert.equal(resolveInboundMode(undefined, 'off'), 'off');
+});
+
+test('instance API schemas accept only explicit inbox rollout modes', () => {
+  assert.equal(validate({ instanceName: 'pilot', inboundInboxMode: 'shadow' }, instanceSchema).valid, true);
+  assert.equal(validate({ instanceName: 'pilot', inboundInboxMode: 'unsafe' }, instanceSchema).valid, false);
+  assert.equal(validate({ mode: 'enforce' }, inboundInboxModeSchema).valid, true);
+  assert.equal(validate({ mode: 'unsafe' }, inboundInboxModeSchema).valid, false);
 });

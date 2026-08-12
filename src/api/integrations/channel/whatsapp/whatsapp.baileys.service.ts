@@ -792,6 +792,16 @@ export class BaileysStartupService extends ChannelStartupService {
     run();
   }
 
+  public override setInboundInboxMode(mode: 'off' | 'shadow' | 'enforce'): void {
+    super.setInboundInboxMode(mode);
+    if (mode === 'enforce') {
+      this.startInboundInboxWorker();
+    } else if (this.inboundWorkerTimer) {
+      clearInterval(this.inboundWorkerTimer);
+      this.inboundWorkerTimer = undefined;
+    }
+  }
+
   private async runInboundInboxWorker(): Promise<void> {
     if (this.inboundWorkerRunning || this.instance.inboundInboxMode !== 'enforce') return;
     this.inboundWorkerRunning = true;

@@ -1,4 +1,4 @@
-import { InstanceDto, SetPresenceDto } from '@api/dto/instance.dto';
+import { InstanceDto, SetInboundInboxModeDto, SetPresenceDto } from '@api/dto/instance.dto';
 import { ChatwootService } from '@api/integrations/chatbot/chatwoot/services/chatwoot.service';
 import { ProviderFiles } from '@api/provider/sessions';
 import { PrismaRepository } from '@api/repository/repository.service';
@@ -70,6 +70,7 @@ export class InstanceController {
         number: instanceData.number,
         businessId: instanceData.businessId,
         status: instanceData.status,
+        inboundInboxMode: instanceData.inboundInboxMode || 'off',
       });
 
       instance.setInstance({
@@ -79,6 +80,7 @@ export class InstanceController {
         token: hash,
         number: instanceData.number,
         businessId: instanceData.businessId,
+        inboundInboxMode: instanceData.inboundInboxMode || 'off',
       });
 
       this.waMonitor.waInstances[instance.instanceName] = instance;
@@ -99,6 +101,7 @@ export class InstanceController {
           typeof instance.connectionStatus === 'string'
             ? instance.connectionStatus
             : instance.connectionStatus?.state || 'unknown',
+        inboundInboxMode: instance.instance.inboundInboxMode,
       };
 
       if (instanceData.proxyHost && instanceData.proxyPort && instanceData.proxyProtocol) {
@@ -161,6 +164,7 @@ export class InstanceController {
             instanceName: instance.instanceName,
             instanceId: instanceId,
             integration: instanceData.integration,
+            inboundInboxMode: instance.instance.inboundInboxMode,
             webhookWaBusiness,
             accessTokenWaBusiness,
             status:
@@ -304,6 +308,24 @@ export class InstanceController {
       this.logger.error(isArray(error.message) ? error.message[0] : error.message);
       throw new BadRequestException(isArray(error.message) ? error.message[0] : error.message);
     }
+  }
+
+  public async setInboundInboxMode(instanceData: InstanceDto, data: SetInboundInboxModeDto) {
+    const persisted = await this.prismaRepository.instance.update({
+      where: { name: instanceData.instanceName },
+      data: { inboundInboxMode: data.mode },
+      select: { name: true, inboundInboxMode: true },
+    });
+    const live = this.waMonitor.waInstances[instanceData.instanceName];
+    if (live?.setInboundInboxMode) live.setInboundInboxMode(data.mode);
+    const readback = await this.prismaRepository.instance.findUniqueOrThrow({
+      where: { name: instanceData.instanceName },
+      select: { inboundInboxMode: true },
+    });
+    if (readback.inboundInboxMode !== data.mode) {
+      throw new InternalServerErrorException('Inbound inbox mode readback mismatch');
+    }
+    return persisted;
   }
 
   public async connectToWhatsapp({ instanceName, number = null }: InstanceDto) {

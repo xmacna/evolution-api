@@ -1,8 +1,8 @@
 import { RouterBroker } from '@api/abstract/abstract.router';
-import { InstanceDto, SetPresenceDto } from '@api/dto/instance.dto';
+import { InstanceDto, SetInboundInboxModeDto, SetPresenceDto } from '@api/dto/instance.dto';
 import { instanceController } from '@api/server.module';
 import { ConfigService } from '@config/env.config';
-import { instanceSchema, presenceOnlySchema } from '@validate/validate.schema';
+import { inboundInboxModeSchema, instanceSchema, presenceOnlySchema } from '@validate/validate.schema';
 import { RequestHandler, Router } from 'express';
 
 import { HttpStatus } from './index.router';
@@ -32,6 +32,15 @@ export class InstanceRouter extends RouterBroker {
           execute: (instance) => instanceController.restartInstance(instance),
         });
 
+        return res.status(HttpStatus.OK).json(response);
+      })
+      .patch(this.routerPath('inboundInbox'), ...guards, async (req, res) => {
+        const response = await this.dataValidate<SetInboundInboxModeDto>({
+          request: req,
+          schema: inboundInboxModeSchema,
+          ClassRef: SetInboundInboxModeDto,
+          execute: (instance, data) => instanceController.setInboundInboxMode(instance, data),
+        });
         return res.status(HttpStatus.OK).json(response);
       })
       .get(this.routerPath('connect'), ...guards, async (req, res) => {
