@@ -1,5 +1,6 @@
 import { IgnoreJidDto } from '@api/dto/chatbot.dto';
 import { InstanceDto } from '@api/dto/instance.dto';
+import { resolveInboundMode } from '@api/integrations/channel/whatsapp/inboundInbox';
 import { PrismaRepository } from '@api/repository/repository.service';
 import { WAMonitoringService } from '@api/services/monitor.service';
 import { Events } from '@api/types/wa.types';
@@ -951,7 +952,10 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
       }
     } catch (error) {
       this.logger.error(error);
-      if (this.waMonitor.waInstances[instance.instanceName]?.instance?.inboundInboxMode === 'enforce') {
+      if (
+        resolveInboundMode(this.waMonitor.waInstances[instance.instanceName]?.instance?.inboundInboxMode, 'off') ===
+        'enforce'
+      ) {
         throw error;
       }
     }

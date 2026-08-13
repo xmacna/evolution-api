@@ -6,6 +6,8 @@ import { ConfigService } from '@config/env.config';
 import { Logger } from '@config/logger.config';
 import { IntegrationSession } from '@prisma/client';
 
+import { applyDeliveryErrorPolicy } from './deliveryErrorPolicy';
+
 /**
  * Base class for all chatbot service implementations
  * Contains common methods shared across different chatbot integrations
@@ -15,6 +17,11 @@ export abstract class BaseChatbotService<BotType = any, SettingsType = any> {
   protected readonly waMonitor: WAMonitoringService;
   protected readonly prismaRepository: PrismaRepository;
   protected readonly configService?: ConfigService;
+
+  /** Integrations with durable delivery may opt into surfacing sink failures. */
+  protected shouldPropagateDeliveryErrors(): boolean {
+    return false;
+  }
 
   constructor(
     waMonitor: WAMonitoringService,
@@ -167,6 +174,7 @@ export abstract class BaseChatbotService<BotType = any, SettingsType = any> {
       });
     } catch (error) {
       this.logger.error(`Error in process: ${error}`);
+      applyDeliveryErrorPolicy(error, this.shouldPropagateDeliveryErrors());
       return;
     }
   }

@@ -8,8 +8,10 @@ import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
 
 import {
+  InboundModeTransitionBlockedError,
   normalizeInstanceScope,
   PrismaInboundInbox,
+  transitionInboundMode,
 } from '../src/api/integrations/channel/whatsapp/inboundInbox';
 import { backfill, exportTombstones, importTombstones } from '../src/cli/inboundInboxMaintenance';
 
@@ -34,6 +36,7 @@ test('raw instance names that used to normalize alike remain tenant-isolated', {
         inbox.claim(
           {
             sourceCluster,
+            instanceId: instanceIds[index],
             instanceScope: normalizeInstanceScope(name),
             contactScope: 'contact@s.whatsapp.net',
             messageId,
@@ -95,6 +98,7 @@ test('840 concurrent deliveries create one receipt and one durable message', { s
     };
     const input = {
       sourceCluster: 'local-concurrency',
+      instanceId,
       instanceScope: `instance-${suffix}`,
       contactScope: '5511999999999@s.whatsapp.net',
       messageId,
@@ -141,6 +145,70 @@ test('840 concurrent deliveries create one receipt and one durable message', { s
   }
 });
 
+test('enforce downgrade serializes against a concurrent ingress claim', { skip: !enabled }, async () => {
+  const repository = new PrismaClient();
+  const inbox = new PrismaInboundInbox(repository as any);
+  const suffix = randomUUID();
+  const instanceId = `mode-race-${suffix}`;
+  const instanceName = `mode-race-${suffix}`;
+  const instanceScope = normalizeInstanceScope(instanceName);
+  const sourceCluster = 'local-mode-race';
+
+  try {
+    await repository.$connect();
+    await repository.instance.create({ data: { id: instanceId, name: instanceName, inboundInboxMode: 'enforce' } });
+
+    for (let iteration = 0; iteration < 30; iteration += 1) {
+      const messageId = `mode-race-${iteration}-${suffix}`;
+      const claim = inbox.claim(
+        {
+          sourceCluster,
+          instanceId,
+          instanceScope,
+          contactScope: 'contact@s.whatsapp.net',
+          messageId,
+          classification: 'real',
+          payloadHash: iteration.toString(16).padStart(64, '0'),
+          leaseOwner: `mode-race-worker-${iteration}`,
+          messageData: {
+            key: { id: messageId, remoteJid: 'contact@s.whatsapp.net', fromMe: false },
+            pushName: 'Mode race',
+            messageType: 'conversation',
+            message: { conversation: `mode race ${iteration}` },
+            source: 'unknown',
+            messageTimestamp: iteration + 1,
+            instanceId,
+          },
+        },
+        'enforce',
+      );
+      const downgrade = transitionInboundMode(repository as any, instanceName, sourceCluster, 'off');
+      const [claimResult, downgradeResult] = await Promise.allSettled([claim, downgrade]);
+
+      assert.notEqual(
+        claimResult.status === 'fulfilled' && downgradeResult.status === 'fulfilled',
+        true,
+        'claim and downgrade must not both commit',
+      );
+      if (claimResult.status === 'fulfilled') {
+        assert.equal(downgradeResult.status, 'rejected');
+        assert.ok(downgradeResult.reason instanceof InboundModeTransitionBlockedError);
+      } else {
+        assert.equal(downgradeResult.status, 'fulfilled');
+        assert.match(String(claimResult.reason), /mode changed before claim/);
+      }
+
+      await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope, messageId } });
+      await transitionInboundMode(repository as any, instanceName, sourceCluster, 'enforce');
+    }
+  } finally {
+    await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope } });
+    await repository.message.deleteMany({ where: { instanceId } });
+    await repository.instance.deleteMany({ where: { id: instanceId } });
+    await repository.$disconnect();
+  }
+});
+
 test('Chatwoot success followed by webhook failure replays the exact enriched payload', { skip: !enabled }, async () => {
   const repository = new PrismaClient();
   const inbox = new PrismaInboundInbox(repository as any);
@@ -158,6 +226,7 @@ test('Chatwoot success followed by webhook failure replays the exact enriched pa
     const claimed = await inbox.claim(
       {
         sourceCluster,
+        instanceId,
         instanceScope,
         contactScope: '12345@lid',
         messageId,
@@ -244,6 +313,199 @@ test('Chatwoot success followed by webhook failure replays the exact enriched pa
   }
 });
 
+test('collision during an active lease cannot revoke fencing or quarantine the live delivery', { skip: !enabled }, async () => {
+  const repository = new PrismaClient();
+  const inbox = new PrismaInboundInbox(repository as any);
+  const suffix = randomUUID();
+  const instanceId = `inflight-collision-${suffix}`;
+  const instanceScope = `inflight-collision-scope-${suffix}`;
+  const sourceCluster = 'local-inflight-collision';
+  const messageId = `collision-${suffix}`;
+
+  try {
+    await repository.$connect();
+    await repository.instance.create({
+      data: { id: instanceId, name: instanceId, inboundInboxMode: 'enforce' },
+    });
+    const original = await inbox.claim(
+      {
+        sourceCluster,
+        instanceId,
+        instanceScope,
+        contactScope: 'contact@s.whatsapp.net',
+        messageId,
+        classification: 'real',
+        payloadHash: 'a'.repeat(64),
+        leaseOwner: 'live-worker',
+        leaseSeconds: 60,
+        messageData: {
+          key: { id: messageId, remoteJid: 'contact@s.whatsapp.net', fromMe: false },
+          pushName: 'Collision',
+          messageType: 'conversation',
+          message: { conversation: 'original' },
+          source: 'unknown',
+          messageTimestamp: 1,
+          instanceId,
+        },
+      },
+      'enforce',
+    );
+    const collision = await inbox.claim(
+      {
+        sourceCluster,
+        instanceId,
+        instanceScope,
+        contactScope: 'contact@s.whatsapp.net',
+        messageId,
+        classification: 'real',
+        payloadHash: 'b'.repeat(64),
+        leaseOwner: 'collision-worker',
+      },
+      'enforce',
+    );
+    assert.equal(collision.kind, 'collision');
+    assert.equal(collision.shouldDispatch, false);
+    const live = await repository.inboundReceipt.findUniqueOrThrow({ where: { id: original.receiptId } });
+    assert.equal(live.state, 'processing');
+    assert.equal(live.leaseOwner, 'live-worker');
+    assert.equal(live.leaseToken, original.leaseToken);
+    assert.equal(await inbox.markSink(original.receiptId, 'webhook', 'sent', 'live-worker', original.leaseToken), true);
+    assert.equal(await inbox.markDone(original.receiptId, 'live-worker', original.leaseToken!), true);
+  } finally {
+    await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope } });
+    await repository.instance.deleteMany({ where: { id: instanceId } });
+    await repository.$disconnect();
+  }
+});
+
+test('Chatwoot failure can leave n8n/webhook sent and retries only the failed sink', { skip: !enabled }, async () => {
+  const repository = new PrismaClient();
+  const inbox = new PrismaInboundInbox(repository as any);
+  const suffix = randomUUID();
+  const instanceId = `chatwoot-best-effort-${suffix}`;
+  const instanceScope = `chatwoot-best-effort-scope-${suffix}`;
+  const sourceCluster = 'local-chatwoot-best-effort';
+  const messageId = `best-effort-${suffix}`;
+
+  try {
+    await repository.$connect();
+    await repository.instance.create({ data: { id: instanceId, name: instanceId, inboundInboxMode: 'enforce' } });
+    const claimed = await inbox.claim(
+      {
+        sourceCluster,
+        instanceId,
+        instanceScope,
+        contactScope: 'contact@s.whatsapp.net',
+        messageId,
+        classification: 'real',
+        payloadHash: 'f'.repeat(64),
+        leaseOwner: 'ingress',
+        leaseSeconds: 60,
+        messageData: {
+          key: { id: messageId, remoteJid: 'contact@s.whatsapp.net', fromMe: false },
+          pushName: 'Best effort',
+          messageType: 'conversation',
+          message: { conversation: 'continue para n8n' },
+          source: 'unknown',
+          messageTimestamp: 1,
+          instanceId,
+        },
+      },
+      'enforce',
+    );
+    assert.equal(await inbox.markSink(claimed.receiptId, 'chatwoot', 'failed', 'ingress', claimed.leaseToken), true);
+    assert.equal(await inbox.markSink(claimed.receiptId, 'webhook', 'sent', 'ingress', claimed.leaseToken), true);
+    assert.equal(await inbox.markSink(claimed.receiptId, 'chatbot', 'sent', 'ingress', claimed.leaseToken), true);
+    assert.equal(await inbox.markFailed(claimed.receiptId, 'ingress', claimed.leaseToken!, 'chatwoot unavailable', 10, 0), true);
+
+    const replay = await inbox.leaseNext(sourceCluster, instanceScope, 'reconciler', 60, 10);
+    assert.ok(replay);
+    assert.equal(replay.chatwootState, 'failed');
+    assert.equal(replay.webhookState, 'sent');
+    assert.equal(replay.chatbotState, 'sent');
+    assert.equal(await inbox.markSink(replay.receiptId, 'chatwoot', 'sent', replay.leaseOwner, replay.leaseToken), true);
+    assert.equal(await inbox.markDone(replay.receiptId, replay.leaseOwner, replay.leaseToken), true);
+  } finally {
+    await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope } });
+    await repository.instance.deleteMany({ where: { id: instanceId } });
+    await repository.$disconnect();
+  }
+});
+
+test('control can promote to real and protocol replay dispatches only once in enforce', { skip: !enabled }, async () => {
+  const repository = new PrismaClient();
+  const inbox = new PrismaInboundInbox(repository as any);
+  const suffix = randomUUID();
+  const instanceId = `classification-${suffix}`;
+  const instanceScope = `classification-scope-${suffix}`;
+  const sourceCluster = 'local-classification';
+
+  try {
+    await repository.$connect();
+    await repository.instance.create({
+      data: { id: instanceId, name: instanceId, inboundInboxMode: 'enforce' },
+    });
+    const controlId = `control-${suffix}`;
+    const control = await inbox.claim(
+      {
+        sourceCluster,
+        instanceId,
+        instanceScope,
+        contactScope: 'contact@s.whatsapp.net',
+        messageId: controlId,
+        classification: 'control',
+        payloadHash: 'c'.repeat(64),
+      },
+      'enforce',
+    );
+    assert.equal(control.shouldDispatch, false);
+    const promoted = await inbox.claim(
+      {
+        sourceCluster,
+        instanceId,
+        instanceScope,
+        contactScope: 'contact@s.whatsapp.net',
+        messageId: controlId,
+        classification: 'real',
+        payloadHash: 'd'.repeat(64),
+        leaseOwner: 'promotion-worker',
+        messageData: {
+          key: { id: controlId, remoteJid: 'contact@s.whatsapp.net', fromMe: false },
+          pushName: 'Promotion',
+          messageType: 'conversation',
+          message: { conversation: 'real' },
+          source: 'unknown',
+          messageTimestamp: 1,
+          instanceId,
+        },
+      },
+      'enforce',
+    );
+    assert.equal(promoted.kind, 'promoted');
+    assert.equal(promoted.shouldDispatch, true);
+    assert.equal(await inbox.markDone(promoted.receiptId, 'promotion-worker', promoted.leaseToken!), true);
+
+    const protocolInput = {
+      sourceCluster,
+      instanceId,
+      instanceScope,
+      contactScope: 'contact@s.whatsapp.net',
+      messageId: `protocol-${suffix}`,
+      classification: 'protocol' as const,
+      payloadHash: 'e'.repeat(64),
+    };
+    const firstProtocol = await inbox.claim(protocolInput, 'enforce');
+    const replayedProtocol = await inbox.claim(protocolInput, 'enforce');
+    assert.equal(firstProtocol.shouldDispatch, true);
+    assert.equal(replayedProtocol.kind, 'duplicate');
+    assert.equal(replayedProtocol.shouldDispatch, false);
+  } finally {
+    await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope } });
+    await repository.instance.deleteMany({ where: { id: instanceId } });
+    await repository.$disconnect();
+  }
+});
+
 test('reconciler leases with fencing, preserves completed sinks and orders each contact', { skip: !enabled }, async () => {
   const repository = new PrismaClient();
   const inbox = new PrismaInboundInbox(repository as any);
@@ -257,6 +519,7 @@ test('reconciler leases with fencing, preserves completed sinks and orders each 
     const result = await inbox.claim(
       {
         sourceCluster,
+        instanceId,
         instanceScope,
         contactScope,
         messageId,
@@ -375,6 +638,7 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
     const stub = await inbox.claim(
       {
         sourceCluster,
+        instanceId,
         instanceScope,
         contactScope: 'contact@s.whatsapp.net',
         messageId,
@@ -388,6 +652,7 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
 
     const realInput = {
         sourceCluster,
+        instanceId,
         instanceScope,
         contactScope: 'contact@s.whatsapp.net',
         messageId,
@@ -410,6 +675,7 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
     const collision = await inbox.claim(
       {
         sourceCluster,
+        instanceId,
         instanceScope,
         contactScope: 'contact@s.whatsapp.net',
         messageId,
@@ -434,6 +700,7 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
     const replay = await inbox.claim(
       {
         sourceCluster,
+        instanceId,
         instanceScope,
         contactScope: 'contact@s.whatsapp.net',
         messageId,

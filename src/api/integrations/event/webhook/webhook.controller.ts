@@ -1,3 +1,4 @@
+import { resolveInboundMode } from '@api/integrations/channel/whatsapp/inboundInbox';
 import { EventDto } from '@api/integrations/event/event.dto';
 import { PrismaRepository } from '@api/repository/repository.service';
 import { WAMonitoringService } from '@api/services/monitor.service';
@@ -149,7 +150,7 @@ export class WebhookController extends EventController implements EventControlle
           const inboxDefault = configService.get<InboundInbox>('INBOUND_INBOX').MODE;
           if (
             event === 'messages.upsert' &&
-            (waInstance?.instance?.inboundInboxMode === 'enforce' || inboxDefault === 'enforce')
+            resolveInboundMode(waInstance?.instance?.inboundInboxMode, inboxDefault) === 'enforce'
           ) {
             throw error;
           }
@@ -207,7 +208,7 @@ export class WebhookController extends EventController implements EventControlle
           const inboxDefault = configService.get<InboundInbox>('INBOUND_INBOX').MODE;
           if (
             event === 'messages.upsert' &&
-            (waInstance?.instance?.inboundInboxMode === 'enforce' || inboxDefault === 'enforce')
+            resolveInboundMode(waInstance?.instance?.inboundInboxMode, inboxDefault) === 'enforce'
           ) {
             throw error;
           }

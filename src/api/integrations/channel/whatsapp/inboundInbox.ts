@@ -14,6 +14,7 @@ export type InboundIdentity = {
 };
 
 export type InboundClaimInput = InboundIdentity & {
+  instanceId: string;
   contactScope: string;
   classification: InboundClassification;
   payloadHash: string;
@@ -117,7 +118,14 @@ export function resolveInboundMode(
   fallback: InboundInboxMode,
 ): InboundInboxMode {
   if (instanceMode === 'off' || instanceMode === 'shadow' || instanceMode === 'enforce') return instanceMode;
-  return fallback;
+  // A global enforce is unsafe: an instance row may still be off while sinks
+  // start throwing as if a durable receipt existed. Missing/invalid instance
+  // state therefore fails closed to off; the env may only opt into shadow.
+  return fallback === 'shadow' ? 'shadow' : 'off';
+}
+
+export function canTransitionInboundMode(current: string, target: string, incompleteReceipts: number): boolean {
+  return current !== 'enforce' || target === 'enforce' || incompleteReceipts === 0;
 }
 
 export function evaluateExistingReceipt(
@@ -125,8 +133,8 @@ export function evaluateExistingReceipt(
   incoming: Pick<InboundClaimInput, 'classification' | 'payloadHash'>,
 ): Exclude<InboundClaimKind, 'claimed'> {
   if (existing.payloadHash === incoming.payloadHash) return 'duplicate';
-  if (existing.classification === 'stub' && incoming.classification === 'real') return 'promoted';
-  if (incoming.classification === 'stub') return 'duplicate';
+  if (existing.classification !== 'real' && incoming.classification === 'real') return 'promoted';
+  if (incoming.classification !== 'real') return 'duplicate';
   return 'collision';
 }
 
@@ -136,6 +144,56 @@ function isUniqueConstraint(error: unknown): boolean {
 
 function isWriteConflict(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+}
+
+export class InboundModeTransitionBlockedError extends Error {
+  constructor(public readonly incompleteReceipts: number) {
+    super(`Inbound inbox downgrade blocked: ${incompleteReceipts} incomplete receipt(s) must drain first`);
+  }
+}
+
+export async function transitionInboundMode(
+  repository: PrismaRepository,
+  instanceName: string,
+  sourceCluster: string,
+  targetMode: InboundInboxMode,
+) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      return await repository.$transaction(
+        async (tx) => {
+          const current = await tx.instance.findUniqueOrThrow({
+            where: { name: instanceName },
+            select: { name: true, inboundInboxMode: true },
+          });
+          const incompleteReceipts =
+            current.inboundInboxMode === 'enforce' && targetMode !== 'enforce'
+              ? await tx.inboundReceipt.count({
+                  where: {
+                    sourceCluster,
+                    instanceScope: normalizeInstanceScope(current.name),
+                    state: { in: ['received', 'processing', 'failed'] },
+                  },
+                })
+              : 0;
+          if (!canTransitionInboundMode(current.inboundInboxMode, targetMode, incompleteReceipts)) {
+            throw new InboundModeTransitionBlockedError(incompleteReceipts);
+          }
+          return tx.instance.update({
+            where: { name: instanceName },
+            data: { inboundInboxMode: targetMode },
+            select: { name: true, inboundInboxMode: true },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (!isWriteConflict(error) || attempt === 7) throw error;
+      const jitterMs = Math.floor(Math.random() * 5);
+      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt + jitterMs));
+    }
+  }
+  throw new Error('Inbound inbox mode transition retry exhausted');
 }
 
 export class PrismaInboundInbox {
@@ -150,6 +208,13 @@ export class PrismaInboundInbox {
       try {
         return await this.repository.$transaction(
           async (tx) => {
+            const instance = await tx.instance.findUnique({
+              where: { id: input.instanceId },
+              select: { inboundInboxMode: true },
+            });
+            if (instance?.inboundInboxMode !== 'enforce') {
+              throw new Error(`Inbound inbox mode changed before claim for instance ${input.instanceId}`);
+            }
             const receipt = await tx.inboundReceipt.create({
               data: {
                 sourceCluster: input.sourceCluster,
@@ -178,7 +243,7 @@ export class PrismaInboundInbox {
               kind: 'claimed' as const,
               receiptId: receipt.id,
               messageRecordId,
-              shouldDispatch: input.classification === 'real',
+              shouldDispatch: input.classification === 'real' || input.classification === 'protocol',
               leaseToken: input.classification === 'real' ? 1 : undefined,
             };
           },
@@ -217,6 +282,13 @@ export class PrismaInboundInbox {
       try {
         const outcome = await this.repository.$transaction(
           async (tx) => {
+            const instance = await tx.instance.findUnique({
+              where: { id: input.instanceId },
+              select: { inboundInboxMode: true },
+            });
+            if (instance?.inboundInboxMode !== 'enforce') {
+              throw new Error(`Inbound inbox mode changed before promotion for instance ${input.instanceId}`);
+            }
             const current = await tx.inboundReceipt.findUnique({
               where: { sourceCluster_instanceScope_messageId: key },
             });
@@ -301,18 +373,28 @@ export class PrismaInboundInbox {
     input: InboundClaimInput,
     kind: 'duplicate' | 'collision',
   ): Promise<InboundClaimResult> {
-    await this.repository.inboundReceipt.update({
-      where: { id: existing.id },
-      data:
-        kind === 'duplicate'
-          ? { duplicateCount: { increment: 1 }, lastSeenAt: new Date() }
-          : {
-              state: 'quarantined',
-              collisionHash: input.payloadHash,
-              lastSeenAt: new Date(),
-              lastError: 'message_id_payload_hash_collision',
-            },
-    });
+    if (kind === 'duplicate') {
+      await this.repository.inboundReceipt.update({
+        where: { id: existing.id },
+        data: { duplicateCount: { increment: 1 }, lastSeenAt: new Date() },
+      });
+    } else {
+      // Never revoke an active/failed worker's fencing token by quarantining its
+      // receipt underneath it. Terminal collisions remain visible, while an
+      // in-flight collision is suppressed without changing delivery state.
+      await this.repository.inboundReceipt.updateMany({
+        where: {
+          id: existing.id,
+          state: { notIn: ['received', 'processing', 'failed'] },
+        },
+        data: {
+          state: 'quarantined',
+          collisionHash: input.payloadHash,
+          lastSeenAt: new Date(),
+          lastError: 'message_id_payload_hash_collision',
+        },
+      });
+    }
     return {
       kind,
       receiptId: existing.id,
@@ -538,7 +620,7 @@ export class PrismaInboundInbox {
         return {
           kind: 'claimed',
           receiptId: created.id,
-          shouldDispatch: input.classification === 'real',
+          shouldDispatch: input.classification === 'real' || input.classification === 'protocol',
         };
       } catch (error) {
         if (!isUniqueConstraint(error)) throw error;
@@ -572,7 +654,8 @@ export class PrismaInboundInbox {
       kind,
       receiptId: existing.id,
       messageRecordId: existing.messageRecordId ?? undefined,
-      shouldDispatch: input.classification === 'real',
+      // Shadow observes only; it must preserve baseline delivery semantics.
+      shouldDispatch: input.classification === 'real' || input.classification === 'protocol',
     };
   }
 }

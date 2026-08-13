@@ -206,6 +206,21 @@ class ChatwootImport {
     }
   }
 
+  public async getExistingMessageBySourceId(sourceId: string, conversationId: number) {
+    const formattedSourceId = `WAID:${sourceId.replace('WAID:', '')}`;
+    const pgClient = postgresClient.getChatwootConnection();
+    const result = await pgClient.query(
+      `SELECT id, inbox_id, conversation_id, source_id
+       FROM messages
+       WHERE source_id = $1 AND conversation_id = $2
+       ORDER BY id ASC
+       LIMIT 1`,
+      [formattedSourceId, conversationId],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
   public async importHistoryMessages(
     instance: InstanceDto,
     chatwootService: ChatwootService,

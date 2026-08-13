@@ -3,6 +3,7 @@ import test from 'node:test';
 import { validate } from 'jsonschema';
 
 import {
+  canTransitionInboundMode,
   classifyInboundMessage,
   evaluateExistingReceipt,
   inboundPayloadHash,
@@ -55,20 +56,40 @@ test('canonical hash detects divergent real content', () => {
   assert.notEqual(inboundPayloadHash(base as any), inboundPayloadHash(divergent as any));
 });
 
-test('receipt policy deduplicates exact replay, promotes stub and quarantines collision', () => {
+test('receipt policy deduplicates exact replay, promotes every non-real class and quarantines real collision', () => {
   const exact = { id: 'r1', classification: 'real', payloadHash: 'a' };
   assert.equal(evaluateExistingReceipt(exact, { classification: 'real', payloadHash: 'a' }), 'duplicate');
   assert.equal(
     evaluateExistingReceipt({ ...exact, classification: 'stub' }, { classification: 'real', payloadHash: 'b' }),
     'promoted',
   );
+  assert.equal(
+    evaluateExistingReceipt({ ...exact, classification: 'control' }, { classification: 'real', payloadHash: 'b' }),
+    'promoted',
+  );
+  assert.equal(
+    evaluateExistingReceipt({ ...exact, classification: 'protocol' }, { classification: 'real', payloadHash: 'b' }),
+    'promoted',
+  );
+  assert.equal(
+    evaluateExistingReceipt(exact, { classification: 'protocol', payloadHash: 'b' }),
+    'duplicate',
+  );
   assert.equal(evaluateExistingReceipt(exact, { classification: 'real', payloadHash: 'b' }), 'collision');
 });
 
-test('invalid persisted modes fail closed to the configured fallback', () => {
+test('invalid persisted modes never enable global enforce', () => {
   assert.equal(resolveInboundMode('enforce', 'off'), 'enforce');
   assert.equal(resolveInboundMode('invalid', 'shadow'), 'shadow');
+  assert.equal(resolveInboundMode(undefined, 'enforce'), 'off');
   assert.equal(resolveInboundMode(undefined, 'off'), 'off');
+});
+
+test('enforce downgrade is blocked until incomplete receipts drain', () => {
+  assert.equal(canTransitionInboundMode('enforce', 'off', 1), false);
+  assert.equal(canTransitionInboundMode('enforce', 'shadow', 1), false);
+  assert.equal(canTransitionInboundMode('enforce', 'off', 0), true);
+  assert.equal(canTransitionInboundMode('shadow', 'off', 10), true);
 });
 
 test('instance API schemas accept only explicit inbox rollout modes', () => {

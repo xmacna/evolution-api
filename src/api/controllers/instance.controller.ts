@@ -1,5 +1,9 @@
 import { InstanceDto, SetInboundInboxModeDto, SetPresenceDto } from '@api/dto/instance.dto';
-import { normalizeInstanceScope } from '@api/integrations/channel/whatsapp/inboundInbox';
+import {
+  InboundModeTransitionBlockedError,
+  normalizeInstanceScope,
+  transitionInboundMode,
+} from '@api/integrations/channel/whatsapp/inboundInbox';
 import { ChatwootService } from '@api/integrations/chatbot/chatwoot/services/chatwoot.service';
 import { ProviderFiles } from '@api/provider/sessions';
 import { PrismaRepository } from '@api/repository/repository.service';
@@ -312,11 +316,19 @@ export class InstanceController {
   }
 
   public async setInboundInboxMode(instanceData: InstanceDto, data: SetInboundInboxModeDto) {
-    const persisted = await this.prismaRepository.instance.update({
-      where: { name: instanceData.instanceName },
-      data: { inboundInboxMode: data.mode },
-      select: { name: true, inboundInboxMode: true },
-    });
+    const sourceCluster = this.configService.get<InboundInbox>('INBOUND_INBOX').SOURCE_CLUSTER;
+    let persisted;
+    try {
+      persisted = await transitionInboundMode(
+        this.prismaRepository,
+        instanceData.instanceName,
+        sourceCluster,
+        data.mode,
+      );
+    } catch (error) {
+      if (error instanceof InboundModeTransitionBlockedError) throw new BadRequestException(error.message);
+      throw error;
+    }
     const live = this.waMonitor.waInstances[instanceData.instanceName];
     if (live?.setInboundInboxMode) live.setInboundInboxMode(data.mode);
     const readback = await this.prismaRepository.instance.findUniqueOrThrow({
@@ -343,7 +355,7 @@ export class InstanceController {
         where,
         _count: { _all: true },
         _sum: { duplicateCount: true },
-        _max: { lastSeenAt: true },
+        _max: { createdAt: true, lastSeenAt: true },
       }),
       this.prismaRepository.inboundReceipt.findFirst({
         where: { ...where, state: { in: ['received', 'processing', 'failed'] } },
@@ -360,6 +372,7 @@ export class InstanceController {
       sourceCluster,
       instanceScope,
       totals: { receipts: totals._count._all, duplicates: totals._sum.duplicateCount || 0 },
+      lastReceiptCreatedAt: totals._max.createdAt?.toISOString() || null,
       lastInboundSeenAt: totals._max.lastSeenAt?.toISOString() || null,
       states: Object.fromEntries(states.map((row) => [row.state, row._count._all])),
       failedSinks: { webhook: webhookFailed, chatwoot: chatwootFailed, chatbot: chatbotFailed },

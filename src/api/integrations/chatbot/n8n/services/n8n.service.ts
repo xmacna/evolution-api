@@ -27,6 +27,10 @@ export class N8nService extends BaseChatbotService<N8n, N8nSetting> {
     return 'n8n';
   }
 
+  protected override shouldPropagateDeliveryErrors(): boolean {
+    return true;
+  }
+
   protected async sendMessageToBot(
     instance: any,
     session: IntegrationSession,
@@ -92,7 +96,7 @@ export class N8nService extends BaseChatbotService<N8n, N8nSetting> {
       });
     } catch (error) {
       this.logger.error(error.response?.data || error);
-      return;
+      throw error;
     }
   }
 }

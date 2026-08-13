@@ -162,6 +162,7 @@ import {
   PrismaInboundInbox,
   resolveInboundMode,
 } from './inboundInbox';
+import { attemptDurableInboundSink, DurableInboundSinkFailure } from './inboundSinkDispatch';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 
 export interface ExtendedIMessageKey extends proto.IMessageKey {
@@ -785,7 +786,7 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   private startInboundInboxWorker(): void {
-    if (this.instance.inboundInboxMode !== 'enforce' || this.inboundWorkerTimer) return;
+    if (this.currentInboundMode() !== 'enforce' || this.inboundWorkerTimer) return;
     const run = () => void this.runInboundInboxWorker().catch((error) => this.logger.error(`Inbound worker: ${error}`));
     this.inboundWorkerTimer = setInterval(run, 1000);
     this.inboundWorkerTimer.unref();
@@ -803,7 +804,7 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   private async runInboundInboxWorker(): Promise<void> {
-    if (this.inboundWorkerRunning || this.instance.inboundInboxMode !== 'enforce') return;
+    if (this.inboundWorkerRunning || this.currentInboundMode() !== 'enforce') return;
     this.inboundWorkerRunning = true;
     const config = this.configService.get<InboundInbox>('INBOUND_INBOX');
     const instanceScope = normalizeInstanceScope(this.instance.name);
@@ -824,6 +825,11 @@ export class BaileysStartupService extends ChannelStartupService {
     }
   }
 
+  private currentInboundMode(): 'off' | 'shadow' | 'enforce' {
+    const fallback = this.configService.get<InboundInbox>('INBOUND_INBOX').MODE;
+    return resolveInboundMode(this.instance.inboundInboxMode, fallback);
+  }
+
   private async dispatchRecoveredInbound(
     item: {
       receiptId: string;
@@ -837,7 +843,7 @@ export class BaileysStartupService extends ChannelStartupService {
     config: InboundInbox,
   ): Promise<void> {
     const messageRaw = item.message as any;
-    let activeSink: 'webhook' | 'chatwoot' | 'chatbot' | undefined;
+    const failures: DurableInboundSinkFailure[] = [];
     const heartbeat = setInterval(
       () => {
         void this.inboundInbox
@@ -867,57 +873,82 @@ export class BaileysStartupService extends ChannelStartupService {
       if (!marked) throw new Error(`Stale inbound lease while marking ${sink}`);
     };
 
+    const attempt = async (
+      sink: 'webhook' | 'chatwoot' | 'chatbot',
+      currentState: string,
+      operation: () => Promise<'sent' | 'skipped'>,
+    ) => {
+      if (['sent', 'skipped'].includes(currentState)) return;
+      const failure = await attemptDurableInboundSink({
+        sink,
+        operation,
+        mark: (markedSink, state) => markSink(markedSink, state, messageRaw),
+        onDeliveryFailure: ({ error }) =>
+          this.logger.error(`Recovered inbound ${sink} failed for ${item.receiptId}: ${error.message}`),
+      });
+      if (failure) failures.push(failure);
+    };
+
     try {
-      if (!['sent', 'skipped'].includes(item.chatwootState)) {
-        activeSink = 'chatwoot';
+      await attempt('chatwoot', item.chatwootState, async () => {
         if (
-          this.configService.get<Chatwoot>('CHATWOOT').ENABLED &&
-          this.localChatwoot?.enabled &&
-          !messageRaw.key?.id?.includes('@broadcast')
+          !this.configService.get<Chatwoot>('CHATWOOT').ENABLED ||
+          !this.localChatwoot?.enabled ||
+          messageRaw.key?.id?.includes('@broadcast')
         ) {
-          const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
-            Events.MESSAGES_UPSERT,
-            { instanceName: this.instance.name, instanceId: this.instanceId },
-            messageRaw,
-          );
-          if (chatwootSentMessage?.id) {
-            messageRaw.chatwootMessageId = chatwootSentMessage.id;
-            messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
-            messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
-          }
-          await markSink('chatwoot', 'sent', messageRaw);
-        } else {
-          await markSink('chatwoot', 'skipped', messageRaw);
+          return 'skipped';
         }
-        activeSink = undefined;
-      }
+        const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
+          Events.MESSAGES_UPSERT,
+          { instanceName: this.instance.name, instanceId: this.instanceId },
+          messageRaw,
+        );
+        if (chatwootSentMessage?.id) {
+          messageRaw.chatwootMessageId = chatwootSentMessage.id;
+          messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
+          messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
+        }
+        return 'sent';
+      });
 
-      if (!['sent', 'skipped'].includes(item.webhookState)) {
-        activeSink = 'webhook';
+      await attempt('webhook', item.webhookState, async () => {
         await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
-        await markSink('webhook', 'sent', messageRaw);
-        activeSink = undefined;
-      }
+        return 'sent';
+      });
 
-      if (!['sent', 'skipped'].includes(item.chatbotState)) {
-        activeSink = 'chatbot';
+      await attempt('chatbot', item.chatbotState, async () => {
         await chatbotController.emit({
           instance: { instanceName: this.instance.name, instanceId: this.instanceId },
           remoteJid: messageRaw.key.remoteJid,
           msg: messageRaw,
           pushName: messageRaw.pushName,
         });
-        await markSink('chatbot', 'sent', messageRaw);
-        activeSink = undefined;
-      }
+        return 'sent';
+      });
 
-      const done = await this.inboundInbox.markDone(item.receiptId, item.leaseOwner, item.leaseToken);
-      if (!done) throw new Error(`Stale inbound lease while completing ${item.receiptId}`);
-    } catch (error) {
-      if (activeSink) {
-        await this.inboundInbox.markSink(item.receiptId, activeSink, 'failed', item.leaseOwner, item.leaseToken);
+      if (failures.length > 0) {
+        const summary = failures.map(({ sink, error }) => `${sink}: ${error.message}`).join('; ');
+        const failed = await this.inboundInbox.markFailed(
+          item.receiptId,
+          item.leaseOwner,
+          item.leaseToken,
+          summary,
+          config.MAX_ATTEMPTS,
+        );
+        if (!failed) throw new Error(`Stale inbound lease while failing ${item.receiptId}`);
+      } else {
+        const done = await this.inboundInbox.markDone(item.receiptId, item.leaseOwner, item.leaseToken);
+        if (!done) throw new Error(`Stale inbound lease while completing ${item.receiptId}`);
       }
-      await this.inboundInbox.markFailed(item.receiptId, item.leaseOwner, item.leaseToken, error, config.MAX_ATTEMPTS);
+    } catch (error) {
+      const failed = await this.inboundInbox.markFailed(
+        item.receiptId,
+        item.leaseOwner,
+        item.leaseToken,
+        error,
+        config.MAX_ATTEMPTS,
+      );
+      if (!failed) this.logger.error(`Recovered inbound fencing lost while handling ${item.receiptId}: ${error}`);
     } finally {
       clearInterval(heartbeat);
     }
@@ -956,6 +987,23 @@ export class BaileysStartupService extends ChannelStartupService {
   private async completeActiveInbound(receipt: { id: string; leaseOwner: string; leaseToken: number }): Promise<void> {
     const done = await this.inboundInbox.markDone(receipt.id, receipt.leaseOwner, receipt.leaseToken);
     if (!done) throw new Error(`Stale inbound lease while completing ${receipt.id}`);
+  }
+
+  private async settleActiveInbound(
+    receipt: { id: string; leaseOwner: string; leaseToken: number },
+    failures: Array<{ sink: 'webhook' | 'chatwoot' | 'chatbot'; error: Error }>,
+    maxAttempts: number,
+  ): Promise<void> {
+    if (failures.length === 0) return this.completeActiveInbound(receipt);
+    const summary = failures.map(({ sink, error }) => `${sink}: ${error.message}`).join('; ');
+    const marked = await this.inboundInbox.markFailed(
+      receipt.id,
+      receipt.leaseOwner,
+      receipt.leaseToken,
+      summary,
+      maxAttempts,
+    );
+    if (!marked) throw new Error(`Stale inbound lease while failing ${receipt.id}`);
   }
 
   private readonly chatHandle = {
@@ -1297,11 +1345,15 @@ export class BaileysStartupService extends ChannelStartupService {
         | { id: string; leaseOwner: string; leaseToken: number; mode: 'off' | 'shadow' | 'enforce' }
         | undefined;
       let activeSink: 'webhook' | 'chatwoot' | 'chatbot' | undefined;
+      let activeSinkFailures: DurableInboundSinkFailure[] = [];
       let heartbeatTimer: NodeJS.Timeout | undefined;
+      let activeInboundMode: 'off' | 'shadow' | 'enforce' = 'off';
       try {
         for (const received of messages) {
+          activeSinkFailures = [];
           const inboundConfig = this.configService.get<InboundInbox>('INBOUND_INBOX');
           const inboundMode = resolveInboundMode(this.instance.inboundInboxMode, inboundConfig.MODE);
+          activeInboundMode = inboundMode;
           const inboundClassification = classifyInboundMessage(received);
           const inboundMessageId = received.key?.id;
           const inboundContactScope = normalizeContactScope(
@@ -1316,15 +1368,22 @@ export class BaileysStartupService extends ChannelStartupService {
             : undefined;
 
           if (inboundMode !== 'off' && inboundIdentity && inboundClassification !== 'real') {
-            await this.inboundInbox.claim(
+            const observed = await this.inboundInbox.claim(
               {
                 ...inboundIdentity,
+                instanceId: this.instanceId,
                 contactScope: inboundContactScope,
                 classification: inboundClassification,
                 payloadHash: inboundPayloadHash(received),
               },
               inboundMode,
             );
+            if (inboundClassification === 'protocol' && !observed.shouldDispatch) {
+              this.logger.info(
+                `Inbound ${observed.kind} protocol suppressed before edit sinks: ${inboundIdentity.instanceScope}/${inboundMessageId}`,
+              );
+              continue;
+            }
           }
           if (
             received?.messageStubParameters?.some?.((param) =>
@@ -1452,6 +1511,7 @@ export class BaileysStartupService extends ChannelStartupService {
             const claim = await this.inboundInbox.claim(
               {
                 ...inboundIdentity,
+                instanceId: this.instanceId,
                 contactScope: inboundContactScope,
                 classification: inboundClassification,
                 payloadHash: inboundPayloadHash(received),
@@ -1615,25 +1675,48 @@ export class BaileysStartupService extends ChannelStartupService {
           // as the original attempt, not the pre-enrichment claim snapshot.
           if (activeReceipt) await this.persistActiveInboundMessage(activeReceipt, messageRaw);
 
+          const attemptActiveSink = async (
+            sink: 'webhook' | 'chatwoot' | 'chatbot',
+            operation: () => Promise<'sent' | 'skipped'>,
+          ) => {
+            activeSink = sink;
+            try {
+              if (!activeReceipt) {
+                await operation();
+                return;
+              }
+              const failure = await attemptDurableInboundSink({
+                sink,
+                operation,
+                mark: (markedSink, state) => this.markActiveInboundSink(activeReceipt!, markedSink, state, messageRaw),
+                onDeliveryFailure: ({ error }) =>
+                  this.logger.error(`Inbound ${sink} failed for ${activeReceipt!.id}: ${error.message}`),
+              });
+              if (failure) activeSinkFailures.push(failure);
+            } finally {
+              activeSink = undefined;
+            }
+          };
+
           if (
             this.configService.get<Chatwoot>('CHATWOOT').ENABLED &&
             this.localChatwoot?.enabled &&
             !received.key.id.includes('@broadcast')
           ) {
-            activeSink = 'chatwoot';
-            const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
-              Events.MESSAGES_UPSERT,
-              { instanceName: this.instance.name, instanceId: this.instanceId },
-              messageRaw,
-            );
+            await attemptActiveSink('chatwoot', async () => {
+              const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
+                Events.MESSAGES_UPSERT,
+                { instanceName: this.instance.name, instanceId: this.instanceId },
+                messageRaw,
+              );
 
-            if (chatwootSentMessage?.id) {
-              messageRaw.chatwootMessageId = chatwootSentMessage.id;
-              messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
-              messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
-            }
-            if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'chatwoot', 'sent', messageRaw);
-            activeSink = undefined;
+              if (chatwootSentMessage?.id) {
+                messageRaw.chatwootMessageId = chatwootSentMessage.id;
+                messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
+                messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
+              }
+              return 'sent';
+            });
           } else if (activeReceipt) {
             await this.markActiveInboundSink(activeReceipt, 'chatwoot', 'skipped', messageRaw);
           }
@@ -1782,20 +1865,20 @@ export class BaileysStartupService extends ChannelStartupService {
           // them durably before webhook/n8n so any retry is payload-equivalent.
           if (activeReceipt) await this.persistActiveInboundMessage(activeReceipt, messageRaw);
 
-          activeSink = 'webhook';
-          await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
-          if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'webhook', 'sent', messageRaw);
-          activeSink = undefined;
-
-          activeSink = 'chatbot';
-          await chatbotController.emit({
-            instance: { instanceName: this.instance.name, instanceId: this.instanceId },
-            remoteJid: messageRaw.key.remoteJid,
-            msg: messageRaw,
-            pushName: messageRaw.pushName,
+          await attemptActiveSink('webhook', async () => {
+            await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
+            return 'sent';
           });
-          if (activeReceipt) await this.markActiveInboundSink(activeReceipt, 'chatbot', 'sent', messageRaw);
-          activeSink = undefined;
+
+          await attemptActiveSink('chatbot', async () => {
+            await chatbotController.emit({
+              instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+              remoteJid: messageRaw.key.remoteJid,
+              msg: messageRaw,
+              pushName: messageRaw.pushName,
+            });
+            return 'sent';
+          });
 
           const contact = await this.prismaRepository.contact.findFirst({
             where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },
@@ -1815,7 +1898,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
           if (contactRaw.remoteJid === 'status@broadcast') {
             if (activeReceipt) {
-              await this.completeActiveInbound(activeReceipt);
+              await this.settleActiveInbound(activeReceipt, activeSinkFailures, inboundConfig.MAX_ATTEMPTS);
               if (heartbeatTimer) clearInterval(heartbeatTimer);
               heartbeatTimer = undefined;
               activeReceipt = undefined;
@@ -1853,7 +1936,7 @@ export class BaileysStartupService extends ChannelStartupService {
               });
 
             if (activeReceipt) {
-              await this.completeActiveInbound(activeReceipt);
+              await this.settleActiveInbound(activeReceipt, activeSinkFailures, inboundConfig.MAX_ATTEMPTS);
               if (heartbeatTimer) clearInterval(heartbeatTimer);
               heartbeatTimer = undefined;
               activeReceipt = undefined;
@@ -1870,7 +1953,7 @@ export class BaileysStartupService extends ChannelStartupService {
               create: contactRaw,
             });
           if (activeReceipt) {
-            await this.completeActiveInbound(activeReceipt);
+            await this.settleActiveInbound(activeReceipt, activeSinkFailures, inboundConfig.MAX_ATTEMPTS);
             if (heartbeatTimer) clearInterval(heartbeatTimer);
             heartbeatTimer = undefined;
             activeReceipt = undefined;
@@ -1891,7 +1974,7 @@ export class BaileysStartupService extends ChannelStartupService {
           );
         }
         this.logger.error(error);
-        throw error;
+        if (activeInboundMode === 'enforce') throw error;
       }
     },
 

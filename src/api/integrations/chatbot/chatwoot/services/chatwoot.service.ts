@@ -1,5 +1,6 @@
 import { InstanceDto } from '@api/dto/instance.dto';
 import { Options, Quoted, SendAudioDto, SendMediaDto, SendTextDto } from '@api/dto/sendMessage.dto';
+import { resolveInboundMode } from '@api/integrations/channel/whatsapp/inboundInbox';
 import { ChatwootDto } from '@api/integrations/chatbot/chatwoot/dto/chatwoot.dto';
 import { postgresClient } from '@api/integrations/chatbot/chatwoot/libs/postgres.client';
 import { chatwootImport } from '@api/integrations/chatbot/chatwoot/utils/chatwoot-import-helper';
@@ -43,6 +44,13 @@ interface ChatwootMessage {
 
 export class ChatwootService {
   private readonly logger = new Logger('ChatwootService');
+
+  private shouldSurfaceInboundFailure(instance?: InstanceDto): boolean {
+    if (!instance?.instanceName) return false;
+    const waInstance = this.waMonitor.waInstances[instance.instanceName];
+    const fallback = this.configService.get<InboundInbox>('INBOUND_INBOX').MODE;
+    return resolveInboundMode(waInstance?.instance?.inboundInboxMode, fallback) === 'enforce';
+  }
 
   // Lock polling delay
   private readonly LOCK_POLLING_DELAY_MS = 300; // Delay between lock status checks
@@ -932,10 +940,23 @@ export class ChatwootService {
     sourceId?: string,
     quotedMsg?: MessageModel,
   ) {
+    if (sourceId && this.isImportHistoryAvailable()) {
+      try {
+        const existing = await chatwootImport.getExistingMessageBySourceId(sourceId, conversationId);
+        if (existing) {
+          this.logger.warn(`Message ${sourceId} already saved on Chatwoot`);
+          return { ...existing, xmacnaDuplicate: true } as any;
+        }
+      } catch (error) {
+        this.logger.error(`Unable to reconcile Chatwoot source_id ${sourceId}: ${error}`);
+        if (this.shouldSurfaceInboundFailure(instance)) throw error;
+      }
+    }
     const client = await this.clientCw(instance);
 
     if (!client) {
       this.logger.warn('client not found');
+      if (this.shouldSurfaceInboundFailure(instance)) throw new Error('Chatwoot client unavailable');
       return null;
     }
 
@@ -961,6 +982,7 @@ export class ChatwootService {
 
     if (!message) {
       this.logger.warn('message not found');
+      if (this.shouldSurfaceInboundFailure(instance)) throw new Error('Chatwoot message create returned empty');
       return null;
     }
 
@@ -1115,6 +1137,8 @@ export class ChatwootService {
       return data;
     } catch (error) {
       this.logger.error(error);
+      if (this.shouldSurfaceInboundFailure(instance)) throw error;
+      return null;
     }
   }
 
@@ -2528,7 +2552,7 @@ export class ChatwootService {
       const inboxDefault = this.configService.get<InboundInbox>('INBOUND_INBOX').MODE;
       if (
         event === Events.MESSAGES_UPSERT &&
-        (waInstance?.instance?.inboundInboxMode === 'enforce' || inboxDefault === 'enforce')
+        resolveInboundMode(waInstance?.instance?.inboundInboxMode, inboxDefault) === 'enforce'
       ) {
         throw error;
       }
