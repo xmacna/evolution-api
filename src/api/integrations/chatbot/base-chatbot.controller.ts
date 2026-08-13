@@ -953,11 +953,21 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
     } catch (error) {
       this.logger.error(error);
       if (
+        this.shouldPropagateInboundFailure() &&
         resolveInboundMode(this.waMonitor.waInstances[instance.instanceName]?.instance?.inboundInboxMode, 'off') ===
-        'enforce'
+          'enforce'
       ) {
         throw error;
       }
     }
+  }
+
+  // The durable receipt tracks a single aggregate 'chatbot' sink. Propagating a
+  // transient failure from one integrator forces the reconciler to replay ALL
+  // of them — including an n8n POST that already delivered. Until the receipt
+  // gains per-integrator states, only the integrator whose delivery must be
+  // durable (n8n) may opt into propagation.
+  protected shouldPropagateInboundFailure(): boolean {
+    return false;
   }
 }

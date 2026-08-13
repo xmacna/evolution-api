@@ -5,7 +5,7 @@ import { WAMessage } from 'baileys';
 import { createHash } from 'crypto';
 
 export type InboundClassification = 'real' | 'stub' | 'control' | 'protocol';
-export type InboundClaimKind = 'claimed' | 'duplicate' | 'promoted' | 'collision';
+export type InboundClaimKind = 'claimed' | 'duplicate' | 'promoted' | 'collision' | 'bypassed';
 
 export type InboundIdentity = {
   sourceCluster: string;
@@ -29,6 +29,10 @@ export type InboundClaimResult = {
   messageRecordId?: string;
   shouldDispatch: boolean;
   leaseToken?: number;
+  /** Set when the instance left enforce between the in-memory check and the
+   * claim transaction; the caller must refresh its cached mode and continue
+   * without a durable receipt instead of dropping the message. */
+  effectiveMode?: InboundInboxMode;
 };
 
 export type InboundWorkItem = {
@@ -130,7 +134,7 @@ export function canTransitionInboundMode(current: string, target: string, incomp
 export function evaluateExistingReceipt(
   existing: ExistingReceipt,
   incoming: Pick<InboundClaimInput, 'classification' | 'payloadHash'>,
-): Exclude<InboundClaimKind, 'claimed'> {
+): Exclude<InboundClaimKind, 'claimed' | 'bypassed'> {
   if (existing.payloadHash === incoming.payloadHash) return 'duplicate';
   if (existing.classification !== 'real' && incoming.classification === 'real') return 'promoted';
   if (incoming.classification !== 'real') return 'duplicate';
@@ -205,14 +209,15 @@ export class PrismaInboundInbox {
     let uniqueConflict = false;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       try {
-        return await this.repository.$transaction(
+        const outcome = await this.repository.$transaction(
           async (tx) => {
             const instance = await tx.instance.findUnique({
               where: { id: input.instanceId },
               select: { inboundInboxMode: true },
             });
-            if (instance?.inboundInboxMode !== 'enforce') {
-              throw new Error(`Inbound inbox mode changed before claim for instance ${input.instanceId}`);
+            const liveMode = resolveInboundMode(instance?.inboundInboxMode, 'off');
+            if (liveMode !== 'enforce') {
+              return { divergedMode: liveMode };
             }
             const receipt = await tx.inboundReceipt.create({
               data: {
@@ -239,15 +244,19 @@ export class PrismaInboundInbox {
               await tx.inboundReceipt.update({ where: { id: receipt.id }, data: { messageRecordId } });
             }
             return {
-              kind: 'claimed' as const,
-              receiptId: receipt.id,
-              messageRecordId,
-              shouldDispatch: input.classification === 'real' || input.classification === 'protocol',
-              leaseToken: input.classification === 'real' ? 1 : undefined,
+              result: {
+                kind: 'claimed' as const,
+                receiptId: receipt.id,
+                messageRecordId,
+                shouldDispatch: input.classification === 'real' || input.classification === 'protocol',
+                leaseToken: input.classification === 'real' ? 1 : undefined,
+              },
             };
           },
           { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
         );
+        if ('divergedMode' in outcome) return this.claimAfterModeChange(input, outcome.divergedMode);
+        return outcome.result;
       } catch (error) {
         if (isUniqueConstraint(error)) {
           uniqueConflict = true;
@@ -285,8 +294,9 @@ export class PrismaInboundInbox {
               where: { id: input.instanceId },
               select: { inboundInboxMode: true },
             });
-            if (instance?.inboundInboxMode !== 'enforce') {
-              throw new Error(`Inbound inbox mode changed before promotion for instance ${input.instanceId}`);
+            const liveMode = resolveInboundMode(instance?.inboundInboxMode, 'off');
+            if (liveMode !== 'enforce') {
+              return { divergedMode: liveMode } as const;
             }
             const current = await tx.inboundReceipt.findUnique({
               where: { sourceCluster_instanceScope_messageId: key },
@@ -342,6 +352,7 @@ export class PrismaInboundInbox {
           },
           { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
         );
+        if ('divergedMode' in outcome) return this.claimAfterModeChange(input, outcome.divergedMode);
         if (outcome.settledReplay) {
           return this.recordSettledReplay(
             outcome.settledReplay,
@@ -365,6 +376,26 @@ export class PrismaInboundInbox {
       }
     }
     throw new Error('Inbound receipt promotion retry exhausted');
+  }
+
+  // The instance left enforce between the caller's in-memory mode check and
+  // the claim transaction (mode transitions serialize against claims). Failing
+  // here would drop the message with no receipt and no reconciler; degrade to
+  // the live mode's semantics instead and tell the caller to refresh its cache.
+  private async claimAfterModeChange(
+    input: InboundClaimInput,
+    liveMode: InboundInboxMode,
+  ): Promise<InboundClaimResult> {
+    if (liveMode === 'shadow') {
+      const observed = await this.observe(input);
+      return { ...observed, effectiveMode: 'shadow' };
+    }
+    return {
+      kind: 'bypassed',
+      receiptId: '',
+      shouldDispatch: input.classification === 'real' || input.classification === 'protocol',
+      effectiveMode: 'off',
+    };
   }
 
   private async recordSettledReplay(

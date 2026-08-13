@@ -15,6 +15,30 @@ test('durable delivery policy propagates errors while baseline policy preserves 
   assert.match(n8nSource, /catch \(error\) \{[\s\S]*?throw error;\s*\}/);
 });
 
+test('inbound failure propagation at the controller is opt-in per integrator (n8n only)', () => {
+  const baseSource = readFileSync('src/api/integrations/chatbot/base-chatbot.controller.ts', 'utf8');
+  assert.match(baseSource, /protected shouldPropagateInboundFailure\(\): boolean \{\s*return false;/);
+  assert.match(baseSource, /this\.shouldPropagateInboundFailure\(\) &&[\s\S]{0,200}throw error;/);
+
+  const n8nSource = readFileSync('src/api/integrations/chatbot/n8n/controllers/n8n.controller.ts', 'utf8');
+  assert.match(n8nSource, /protected override shouldPropagateInboundFailure\(\): boolean \{\s*return true;/);
+
+  for (const controller of [
+    'src/api/integrations/chatbot/dify/controllers/dify.controller.ts',
+    'src/api/integrations/chatbot/openai/controllers/openai.controller.ts',
+    'src/api/integrations/chatbot/typebot/controllers/typebot.controller.ts',
+    'src/api/integrations/chatbot/evolutionBot/controllers/evolutionBot.controller.ts',
+    'src/api/integrations/chatbot/evoai/controllers/evoai.controller.ts',
+    'src/api/integrations/chatbot/flowise/controllers/flowise.controller.ts',
+  ]) {
+    assert.doesNotMatch(
+      readFileSync(controller, 'utf8'),
+      /shouldPropagateInboundFailure/,
+      `${controller} must inherit the swallow default; a transient failure there would replay the aggregate chatbot sink`,
+    );
+  }
+});
+
 test('route instanceName wins over query and prevents cross-tenant retargeting', async () => {
   const received = mergeRequestIdentity(
     { instanceName: 'tenant-authenticated' },

@@ -185,17 +185,27 @@ test('enforce downgrade serializes against a concurrent ingress claim', { skip: 
       const downgrade = transitionInboundMode(repository as any, instanceName, sourceCluster, 'off');
       const [claimResult, downgradeResult] = await Promise.allSettled([claim, downgrade]);
 
-      assert.notEqual(
-        claimResult.status === 'fulfilled' && downgradeResult.status === 'fulfilled',
-        true,
-        'claim and downgrade must not both commit',
-      );
-      if (claimResult.status === 'fulfilled') {
-        assert.equal(downgradeResult.status, 'rejected');
+      if (claimResult.status !== 'fulfilled') {
+        assert.fail(`claim must never throw on a mode race — that used to drop the batch: ${claimResult.reason}`);
+      }
+      if (claimResult.value.kind === 'claimed') {
+        // Claim won the serialization: an in-flight enforce receipt must block
+        // the downgrade until it drains.
+        if (downgradeResult.status !== 'rejected') {
+          assert.fail('an in-flight enforce receipt must block the downgrade');
+        }
         assert.ok(downgradeResult.reason instanceof InboundModeTransitionBlockedError);
       } else {
+        // Downgrade won: the claim must degrade to the live mode with baseline
+        // delivery semantics and leave no enforce receipt behind.
+        assert.equal(claimResult.value.kind, 'bypassed');
+        assert.equal(claimResult.value.effectiveMode, 'off');
+        assert.equal(claimResult.value.shouldDispatch, true);
         assert.equal(downgradeResult.status, 'fulfilled');
-        assert.match(String(claimResult.reason), /mode changed before claim/);
+        const leftover = await repository.inboundReceipt.count({
+          where: { sourceCluster, instanceScope, messageId },
+        });
+        assert.equal(leftover, 0, 'a degraded claim must not create receipts');
       }
 
       await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope, messageId } });
@@ -786,5 +796,70 @@ test('historical backfill never queues replay and tombstones migrate with rewrit
     await repository.instance.deleteMany({ where: { id: instanceId } });
     await repository.$disconnect();
     rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('claim degrades to the live mode instead of dropping when the instance left enforce', { skip: !enabled }, async () => {
+  const repository = new PrismaClient();
+  const inbox = new PrismaInboundInbox(repository as any);
+  const suffix = randomUUID();
+  const sourceCluster = 'local-mode-degrade';
+  const cases = [
+    { name: `Degrade Shadow ${suffix}`, id: `degrade-shadow-${suffix}`, liveMode: 'shadow' as const },
+    { name: `Degrade Off ${suffix}`, id: `degrade-off-${suffix}`, liveMode: 'off' as const },
+  ];
+
+  try {
+    await repository.$connect();
+    await repository.instance.createMany({
+      data: cases.map((c) => ({ id: c.id, name: c.name, inboundInboxMode: c.liveMode })),
+    });
+
+    for (const c of cases) {
+      // The caller still believes the instance is in enforce (stale in-memory
+      // mode); the transaction must degrade, never throw and never drop.
+      const result = await inbox.claim(
+        {
+          sourceCluster,
+          instanceId: c.id,
+          instanceScope: normalizeInstanceScope(c.name),
+          contactScope: 'contact@s.whatsapp.net',
+          messageId: `degrade-${c.liveMode}-${suffix}`,
+          classification: 'real',
+          payloadHash: 'b'.repeat(64),
+          leaseOwner: 'degrade-worker',
+          messageData: {
+            key: { id: `degrade-${c.liveMode}-${suffix}`, remoteJid: 'contact@s.whatsapp.net', fromMe: false },
+            pushName: 'Mode degrade',
+            messageType: 'conversation',
+            message: { conversation: 'hello' },
+            source: 'unknown',
+            messageTimestamp: 1,
+            instanceId: c.id,
+          },
+        },
+        'enforce',
+      );
+
+      assert.equal(result.effectiveMode, c.liveMode);
+      assert.equal(result.shouldDispatch, true, 'a real message must still reach the sinks in the live mode');
+      assert.equal(result.leaseToken, undefined, 'no durable lease may exist outside enforce');
+
+      const rows = await repository.inboundReceipt.findMany({
+        where: { sourceCluster, instanceScope: normalizeInstanceScope(c.name) },
+      });
+      if (c.liveMode === 'shadow') {
+        assert.equal(result.kind, 'claimed');
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].state, 'shadow_seen');
+      } else {
+        assert.equal(result.kind, 'bypassed');
+        assert.equal(rows.length, 0, 'off must not create receipts');
+      }
+    }
+  } finally {
+    await repository.inboundReceipt.deleteMany({ where: { sourceCluster } });
+    await repository.instance.deleteMany({ where: { id: { in: cases.map((c) => c.id) } } });
+    await repository.$disconnect();
   }
 });

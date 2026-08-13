@@ -1377,6 +1377,13 @@ export class BaileysStartupService extends ChannelStartupService {
               },
               inboundMode,
             );
+            if (observed.effectiveMode && observed.effectiveMode !== inboundMode) {
+              this.logger.warn(
+                `Inbound inbox mode changed to ${observed.effectiveMode} during claim; refreshing cached mode`,
+              );
+              this.setInboundInboxMode(observed.effectiveMode);
+              activeInboundMode = observed.effectiveMode;
+            }
             if (inboundClassification === 'protocol' && !observed.shouldDispatch) {
               this.logger.info(
                 `Inbound ${observed.kind} protocol suppressed before edit sinks: ${inboundIdentity.instanceScope}/${inboundMessageId}`,
@@ -1520,6 +1527,13 @@ export class BaileysStartupService extends ChannelStartupService {
               },
               inboundMode,
             );
+            if (claim.effectiveMode && claim.effectiveMode !== inboundMode) {
+              this.logger.warn(
+                `Inbound inbox mode changed to ${claim.effectiveMode} during claim; continuing without enforce for ${inboundMessageId}`,
+              );
+              this.setInboundInboxMode(claim.effectiveMode);
+              activeInboundMode = claim.effectiveMode;
+            }
             durableMessageRecordId = claim.messageRecordId;
             if (claim.leaseToken) {
               activeReceipt = {
