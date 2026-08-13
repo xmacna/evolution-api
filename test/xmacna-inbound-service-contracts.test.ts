@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import { mergeRequestIdentity } from '../src/api/abstract/requestIdentity';
 import { runBestEffortChatbots } from '../src/api/integrations/chatbot/chatbotDispatchPolicy';
+import { buildChatwootEditSourceId } from '../src/api/integrations/chatbot/chatwoot/chatwootMessageIdentity';
 import { applyDeliveryErrorPolicy } from '../src/api/integrations/chatbot/deliveryErrorPolicy';
 
 test('durable delivery policy propagates errors while baseline policy preserves swallow semantics', () => {
@@ -77,6 +78,23 @@ test('durable n8n delivery is isolated from best-effort chatbot effects', async 
   assert.match(serviceSource, /recoveredChatbot === 'succeeded'[\s\S]{0,300}emitBestEffortInbound/);
   assert.match(serviceSource, /attemptActiveSink\('chatbot'[\s\S]{0,500}emitDurableInbound/);
   assert.match(serviceSource, /if \(chatbotDelivered\)[\s\S]{0,300}emitBestEffortInbound/);
+});
+
+test('Chatwoot edit revisions have stable identities distinct from the original WAID', () => {
+  const first = buildChatwootEditSourceId('3EB0TEST', 'novo conteúdo');
+  const retry = buildChatwootEditSourceId('3EB0TEST', 'novo conteúdo');
+  const secondRevision = buildChatwootEditSourceId('3EB0TEST', 'conteúdo corrigido');
+
+  assert.equal(first, retry);
+  assert.notEqual(first, 'WAID:3EB0TEST');
+  assert.notEqual(first, secondRevision);
+  assert.match(first, /^WAID:3EB0TEST:EDIT:[a-f0-9]{64}$/);
+
+  const serviceSource = readFileSync(
+    'src/api/integrations/chatbot/chatwoot/services/chatwoot.service.ts',
+    'utf8',
+  );
+  assert.match(serviceSource, /buildChatwootEditSourceId\(body\.key\.id, editedMessageContent\)/);
 });
 
 test('route instanceName wins over query and prevents cross-tenant retargeting', async () => {

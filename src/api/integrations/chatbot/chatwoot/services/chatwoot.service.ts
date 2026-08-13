@@ -1,6 +1,7 @@
 import { InstanceDto } from '@api/dto/instance.dto';
 import { Options, Quoted, SendAudioDto, SendMediaDto, SendTextDto } from '@api/dto/sendMessage.dto';
 import { resolveInboundMode } from '@api/integrations/channel/whatsapp/inboundInbox';
+import { buildChatwootEditSourceId } from '@api/integrations/chatbot/chatwoot/chatwootMessageIdentity';
 import { ChatwootDto } from '@api/integrations/chatbot/chatwoot/dto/chatwoot.dto';
 import { postgresClient } from '@api/integrations/chatbot/chatwoot/libs/postgres.client';
 import { chatwootImport } from '@api/integrations/chatbot/chatwoot/utils/chatwoot-import-helper';
@@ -2409,6 +2410,7 @@ export class ChatwootService {
         if (message && message.chatwootConversationId && message.chatwootMessageId) {
           // Criar nova mensagem com formato: "Mensagem editada:\n\nteste1"
           const editedText = `\n\n\`${i18next.t('cw.message.edited')}:\`\n\n${editedMessageContent}`;
+          const editedSourceId = buildChatwootEditSourceId(body.key.id, editedMessageContent);
 
           const send = await this.createMessage(
             instance,
@@ -2420,7 +2422,7 @@ export class ChatwootService {
             {
               message: { extendedTextMessage: { contextInfo: { stanzaId: key.id } } },
             },
-            'WAID:' + body.key.id,
+            editedSourceId,
             null,
           );
           if (!send) {
