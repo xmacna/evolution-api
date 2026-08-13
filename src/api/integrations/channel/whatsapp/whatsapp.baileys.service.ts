@@ -1342,8 +1342,7 @@ export class BaileysStartupService extends ChannelStartupService {
       settings: any,
     ) => {
       let activeReceipt:
-        | { id: string; leaseOwner: string; leaseToken: number; mode: 'off' | 'shadow' | 'enforce' }
-        | undefined;
+        { id: string; leaseOwner: string; leaseToken: number; mode: 'off' | 'shadow' | 'enforce' } | undefined;
       let activeSink: 'webhook' | 'chatwoot' | 'chatbot' | undefined;
       let activeSinkFailures: DurableInboundSinkFailure[] = [];
       let heartbeatTimer: NodeJS.Timeout | undefined;
@@ -3250,8 +3249,9 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           const response = await axios.get(mediaMessage.media, config);
+          const responseContentType = response.headers['content-type'];
 
-          mimetype = response.headers['content-type'];
+          mimetype = typeof responseContentType === 'string' ? responseContentType : false;
         }
       }
 

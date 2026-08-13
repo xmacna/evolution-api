@@ -90,8 +90,7 @@ export function classifyInboundMessage(received: WAMessage): InboundClassificati
   if (protocol) return 'protocol';
 
   const text = (message?.conversation || (message?.extendedTextMessage as { text?: string } | undefined)?.text) as
-    | string
-    | undefined;
+    string | undefined;
   if (text === 'requestPlaceholder' || text === 'onDemandHistSync') return 'control';
 
   if (!message && (received?.messageStubType !== undefined || received?.messageStubParameters?.length)) return 'stub';
