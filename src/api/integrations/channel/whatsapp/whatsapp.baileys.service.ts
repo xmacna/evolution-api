@@ -878,7 +878,7 @@ export class BaileysStartupService extends ChannelStartupService {
       currentState: string,
       operation: () => Promise<'sent' | 'skipped'>,
     ) => {
-      if (['sent', 'skipped'].includes(currentState)) return;
+      if (['sent', 'skipped'].includes(currentState)) return 'already-settled' as const;
       const failure = await attemptDurableInboundSink({
         sink,
         operation,
@@ -886,7 +886,11 @@ export class BaileysStartupService extends ChannelStartupService {
         onDeliveryFailure: ({ error }) =>
           this.logger.error(`Recovered inbound ${sink} failed for ${item.receiptId}: ${error.message}`),
       });
-      if (failure) failures.push(failure);
+      if (failure) {
+        failures.push(failure);
+        return 'failed' as const;
+      }
+      return 'succeeded' as const;
     };
 
     try {
@@ -916,8 +920,8 @@ export class BaileysStartupService extends ChannelStartupService {
         return 'sent';
       });
 
-      await attempt('chatbot', item.chatbotState, async () => {
-        await chatbotController.emit({
+      const recoveredChatbot = await attempt('chatbot', item.chatbotState, async () => {
+        await chatbotController.emitDurableInbound({
           instance: { instanceName: this.instance.name, instanceId: this.instanceId },
           remoteJid: messageRaw.key.remoteJid,
           msg: messageRaw,
@@ -925,6 +929,14 @@ export class BaileysStartupService extends ChannelStartupService {
         });
         return 'sent';
       });
+      if (recoveredChatbot === 'succeeded') {
+        await chatbotController.emitBestEffortInbound({
+          instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+          remoteJid: messageRaw.key.remoteJid,
+          msg: messageRaw,
+          pushName: messageRaw.pushName,
+        });
+      }
 
       if (failures.length > 0) {
         const summary = failures.map(({ sink, error }) => `${sink}: ${error.message}`).join('; ');
@@ -1696,7 +1708,7 @@ export class BaileysStartupService extends ChannelStartupService {
             try {
               if (!activeReceipt) {
                 await operation();
-                return;
+                return true;
               }
               const failure = await attemptDurableInboundSink({
                 sink,
@@ -1705,7 +1717,11 @@ export class BaileysStartupService extends ChannelStartupService {
                 onDeliveryFailure: ({ error }) =>
                   this.logger.error(`Inbound ${sink} failed for ${activeReceipt!.id}: ${error.message}`),
               });
-              if (failure) activeSinkFailures.push(failure);
+              if (failure) {
+                activeSinkFailures.push(failure);
+                return false;
+              }
+              return true;
             } finally {
               activeSink = undefined;
             }
@@ -1883,8 +1899,8 @@ export class BaileysStartupService extends ChannelStartupService {
             return 'sent';
           });
 
-          await attemptActiveSink('chatbot', async () => {
-            await chatbotController.emit({
+          const chatbotDelivered = await attemptActiveSink('chatbot', async () => {
+            await chatbotController.emitDurableInbound({
               instance: { instanceName: this.instance.name, instanceId: this.instanceId },
               remoteJid: messageRaw.key.remoteJid,
               msg: messageRaw,
@@ -1892,6 +1908,14 @@ export class BaileysStartupService extends ChannelStartupService {
             });
             return 'sent';
           });
+          if (chatbotDelivered) {
+            await chatbotController.emitBestEffortInbound({
+              instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+              remoteJid: messageRaw.key.remoteJid,
+              msg: messageRaw,
+              pushName: messageRaw.pushName,
+            });
+          }
 
           const contact = await this.prismaRepository.contact.findFirst({
             where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },

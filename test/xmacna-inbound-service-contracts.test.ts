@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
 import { mergeRequestIdentity } from '../src/api/abstract/requestIdentity';
+import { runBestEffortChatbots } from '../src/api/integrations/chatbot/chatbotDispatchPolicy';
 import { applyDeliveryErrorPolicy } from '../src/api/integrations/chatbot/deliveryErrorPolicy';
 
 test('durable delivery policy propagates errors while baseline policy preserves swallow semantics', () => {
@@ -37,6 +38,45 @@ test('inbound failure propagation at the controller is opt-in per integrator (n8
       `${controller} must inherit the swallow default; a transient failure there would replay the aggregate chatbot sink`,
     );
   }
+});
+
+test('durable n8n delivery is isolated from best-effort chatbot effects', async () => {
+  const calls: string[] = [];
+  const failures: string[] = [];
+
+  await assert.rejects(
+    async () => {
+      calls.push('n8n');
+      throw new Error('n8n unavailable');
+    },
+    /n8n unavailable/,
+  );
+  assert.deepEqual(calls, ['n8n'], 'best-effort integrations must not run before durable n8n succeeds');
+
+  calls.length = 0;
+  calls.push('n8n');
+  await runBestEffortChatbots(
+    [
+      { name: 'typebot', emit: async () => void calls.push('typebot') },
+      {
+        name: 'dify',
+        emit: async () => {
+          calls.push('dify');
+          throw new Error('dify unavailable');
+        },
+      },
+    ],
+    (name, error) => failures.push(`${name}:${error.message}`),
+  );
+
+  assert.deepEqual(calls, ['n8n', 'typebot', 'dify']);
+  assert.deepEqual(failures, ['dify:dify unavailable']);
+
+  const serviceSource = readFileSync('src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts', 'utf8');
+  assert.match(serviceSource, /attempt\('chatbot'[\s\S]{0,500}emitDurableInbound/);
+  assert.match(serviceSource, /recoveredChatbot === 'succeeded'[\s\S]{0,300}emitBestEffortInbound/);
+  assert.match(serviceSource, /attemptActiveSink\('chatbot'[\s\S]{0,500}emitDurableInbound/);
+  assert.match(serviceSource, /if \(chatbotDelivered\)[\s\S]{0,300}emitBestEffortInbound/);
 });
 
 test('route instanceName wins over query and prevents cross-tenant retargeting', async () => {

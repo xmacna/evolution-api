@@ -14,6 +14,8 @@ import { Logger } from '@config/logger.config';
 import { IntegrationSession } from '@prisma/client';
 import { findBotByTrigger } from '@utils/findBotByTrigger';
 
+import { runBestEffortChatbots } from './chatbotDispatchPolicy';
+
 export type EmitData = {
   instance: InstanceDto;
   remoteJid: string;
@@ -91,15 +93,36 @@ export class ChatbotController {
       pushName,
       isIntegration,
     };
-    await Promise.all([
-      evolutionBotController.emit(emitData),
-      typebotController.emit(emitData),
-      openaiController.emit(emitData),
-      difyController.emit(emitData),
-      n8nController.emit(emitData),
-      evoaiController.emit(emitData),
-      flowiseController.emit(emitData),
-    ]);
+    await this.emitDurableInbound(emitData);
+    await this.emitBestEffortInbound(emitData);
+  }
+
+  /**
+   * The legacy receipt column is named `chatbotState`, but its durable
+   * contract is specifically the n8n delivery. Running n8n alone lets the
+   * caller persist `sent` before any non-durable integrator can have effects.
+   */
+  public async emitDurableInbound(data: EmitData): Promise<void> {
+    await n8nController.emit(data);
+  }
+
+  /**
+   * Other chatbot integrations remain best-effort. They run only after n8n is
+   * durably acknowledged and are never allowed to reopen the n8n receipt.
+   */
+  public async emitBestEffortInbound(data: EmitData): Promise<void> {
+    await runBestEffortChatbots(
+      [
+        { name: 'evolutionBot', emit: () => evolutionBotController.emit(data) },
+        { name: 'typebot', emit: () => typebotController.emit(data) },
+        { name: 'openai', emit: () => openaiController.emit(data) },
+        { name: 'dify', emit: () => difyController.emit(data) },
+        { name: 'evoai', emit: () => evoaiController.emit(data) },
+        { name: 'flowise', emit: () => flowiseController.emit(data) },
+      ],
+      (name, error) =>
+        this.logger.error(`Best-effort chatbot ${name} failed after durable n8n delivery: ${error.message}`),
+    );
   }
 
   public processDebounce(
