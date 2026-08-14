@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const path = require('node:path');
 const test = require('node:test');
 
@@ -106,4 +107,63 @@ test('all auth-state providers persist arbitrary rc14 key categories', () => {
     assert.match(source, /for \(const category in data\)/);
     assert.match(source, /`\$\{category\}-\$\{id\}`/);
   }
+});
+
+test('security overrides resolve to the audited runtime versions', () => {
+  assert.equal(require('axios/package.json').version, '1.19.0');
+  assert.equal(require('link-preview-js/package.json').version, '5.0.0');
+
+  const chatwootRoot = require.resolve('@figuro/chatwoot-sdk');
+  const chatwootAxiosPackage = require.resolve('axios/package.json', { paths: [chatwootRoot] });
+  assert.equal(require(chatwootAxiosPackage).version, '1.19.0');
+
+  const baileysRoot = require.resolve('baileys');
+  const baileysLinkPreviewPackage = require.resolve('link-preview-js/package.json', { paths: [baileysRoot] });
+  assert.equal(require(baileysLinkPreviewPackage).version, '5.0.0');
+});
+
+test('Chatwoot SDK request remains compatible with the Axios override', async (t) => {
+  const server = http.createServer((request, response) => {
+    assert.equal(request.method, 'GET');
+    assert.equal(request.url, '/api/ping?probe=baseline');
+    assert.equal(request.headers.api_access_token, 'test-token');
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+
+  const address = server.address();
+  const { request } = require('@figuro/chatwoot-sdk/dist/core/request');
+  const result = await request(
+    {
+      basePath: `http://127.0.0.1:${address.port}`,
+      with_credentials: false,
+      credentials: 'omit',
+      token: 'test-token',
+    },
+    { method: 'GET', url: '/api/ping', query: { probe: 'baseline' } },
+  );
+
+  assert.deepEqual(result, { ok: true });
+});
+
+test('Baileys link preview, node-cron and sharp major updates keep required APIs', async () => {
+  const { getLinkPreview } = await import('link-preview-js');
+  assert.equal(typeof getLinkPreview, 'function');
+
+  const cron = require('node-cron');
+  assert.equal(cron.validate('0,30 * * * *'), true);
+  const task = cron.schedule('0 0 1 1 *', () => {}, { timezone: 'UTC' });
+  task.destroy();
+
+  const sharp = require('sharp');
+  assert.equal(typeof sharp, 'function');
+  const metadata = await sharp({
+    create: { width: 1, height: 1, channels: 4, background: '#00000000' },
+  })
+    .png()
+    .metadata();
+  assert.equal(metadata.width, 1);
+  assert.equal(metadata.height, 1);
 });
