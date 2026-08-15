@@ -54,7 +54,17 @@ type ExistingReceipt = {
   leaseToken?: number;
 };
 
-const VOLATILE_KEYS = new Set(['timestamp', 'messagetimestamp', 'requestid', 'fromme']);
+const VOLATILE_KEYS = new Set([
+  'timestamp',
+  'messagetimestamp',
+  'requestid',
+  'fromme',
+  // Baileys may enrich a replay of the same message with device metadata a
+  // few seconds later. It does not change user-visible content and must not
+  // turn a legitimate redelivery into a cross-payload collision.
+  'devicelistmetadata',
+  'devicelistmetadataversion',
+]);
 
 function canonicalize(value: unknown): unknown {
   if (Buffer.isBuffer(value)) return { type: 'Buffer', data: [...value] };

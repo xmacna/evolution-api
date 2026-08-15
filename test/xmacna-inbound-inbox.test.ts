@@ -56,6 +56,53 @@ test('canonical hash detects divergent real content', () => {
   assert.notEqual(inboundPayloadHash(base as any), inboundPayloadHash(divergent as any));
 });
 
+test('canonical hash ignores Baileys device metadata added to a real-message replay', () => {
+  const first = {
+    key: { id: 'same-id' },
+    message: {
+      conversation: 'mesmo conteúdo',
+      messageContextInfo: { messageSecret: 'stable', threadId: 'thread-1' },
+    },
+  };
+  const enrichedReplay = {
+    key: { id: 'same-id' },
+    message: {
+      conversation: 'mesmo conteúdo',
+      messageContextInfo: {
+        deviceListMetadata: { senderKeyHash: 'volatile' },
+        deviceListMetadataVersion: 2,
+        messageSecret: 'stable',
+        threadId: 'thread-1',
+      },
+    },
+  };
+
+  assert.equal(inboundPayloadHash(first as any), inboundPayloadHash(enrichedReplay as any));
+});
+
+test('canonical hash preserves material message context while ignoring device metadata', () => {
+  const base = {
+    key: { id: 'same-id' },
+    message: {
+      extendedTextMessage: {
+        text: 'resposta',
+        contextInfo: { stanzaId: 'quoted-a', deviceListMetadataVersion: 1 },
+      },
+    },
+  };
+  const divergentQuote = {
+    key: { id: 'same-id' },
+    message: {
+      extendedTextMessage: {
+        text: 'resposta',
+        contextInfo: { stanzaId: 'quoted-b', deviceListMetadataVersion: 2 },
+      },
+    },
+  };
+
+  assert.notEqual(inboundPayloadHash(base as any), inboundPayloadHash(divergentQuote as any));
+});
+
 test('receipt policy deduplicates exact replay, promotes every non-real class and quarantines real collision', () => {
   const exact = { id: 'r1', classification: 'real', payloadHash: 'a' };
   assert.equal(evaluateExistingReceipt(exact, { classification: 'real', payloadHash: 'a' }), 'duplicate');
