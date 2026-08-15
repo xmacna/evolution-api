@@ -30,8 +30,6 @@ export class FlowiseController extends BaseChatbotController<FlowiseModel, Flowi
   botRepository: any;
   settingsRepository: any;
   sessionRepository: any;
-  userMessageDebounce: { [key: string]: { message: string; timeoutId: NodeJS.Timeout } } = {};
-
   protected getFallbackBotId(settings: any): string | undefined {
     return settings?.flowiseIdFallback;
   }

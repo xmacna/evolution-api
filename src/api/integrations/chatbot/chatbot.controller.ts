@@ -14,6 +14,7 @@ import { Logger } from '@config/logger.config';
 import { IntegrationSession } from '@prisma/client';
 import { findBotByTrigger } from '@utils/findBotByTrigger';
 
+import { ChatbotDebounceStore, processChatbotDebounce } from './chatbotDebounce';
 import { runBestEffortChatbots } from './chatbotDispatchPolicy';
 
 export type EmitData = {
@@ -28,7 +29,7 @@ export interface ChatbotControllerInterface {
   botRepository: any;
   settingsRepository: any;
   sessionRepository: any;
-  userMessageDebounce: { [key: string]: { message: string; timeoutId: NodeJS.Timeout } };
+  userMessageDebounce: ChatbotDebounceStore;
 
   createBot(instance: InstanceDto, data: any): Promise<any>;
   findBot(instance: InstanceDto): Promise<any>;
@@ -126,41 +127,21 @@ export class ChatbotController {
   }
 
   public processDebounce(
-    userMessageDebounce: any,
+    userMessageDebounce: ChatbotDebounceStore,
     content: string,
-    remoteJid: string,
+    debounceKey: string,
     debounceTime: number,
     callback: any,
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (userMessageDebounce[remoteJid]) {
-        userMessageDebounce[remoteJid].message += `\n${content}`;
-        userMessageDebounce[remoteJid].waiters.push({ resolve, reject });
-        userMessageDebounce[remoteJid].callback = callback;
-        this.logger.log('message debounced: ' + userMessageDebounce[remoteJid].message);
-        clearTimeout(userMessageDebounce[remoteJid].timeoutId);
-      } else {
-        userMessageDebounce[remoteJid] = {
-          message: content,
-          timeoutId: null,
-          callback,
-          waiters: [{ resolve, reject }],
-        };
-      }
-
-      userMessageDebounce[remoteJid].timeoutId = setTimeout(async () => {
-        const entry = userMessageDebounce[remoteJid];
-        const myQuestion = entry.message;
-        this.logger.log('Debounce complete. Processing message: ' + myQuestion);
-        delete userMessageDebounce[remoteJid];
-        try {
-          await entry.callback(myQuestion);
-          entry.waiters.forEach((waiter) => waiter.resolve());
-        } catch (error) {
-          entry.waiters.forEach((waiter) => waiter.reject(error));
-        }
-      }, debounceTime * 1000);
-    });
+    return processChatbotDebounce(
+      userMessageDebounce,
+      content,
+      debounceKey,
+      debounceTime,
+      callback,
+      (merged) => this.logger.log('message debounced: ' + merged),
+      (flushed) => this.logger.log('Debounce complete. Processing message: ' + flushed),
+    );
   }
 
   public checkIgnoreJids(ignoreJids: any, remoteJid: string) {

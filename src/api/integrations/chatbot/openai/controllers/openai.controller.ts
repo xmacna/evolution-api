@@ -32,7 +32,6 @@ export class OpenaiController extends BaseChatbotController<OpenaiBot, OpenaiDto
   botRepository: any;
   settingsRepository: any;
   sessionRepository: any;
-  userMessageDebounce: { [key: string]: { message: string; timeoutId: NodeJS.Timeout } } = {};
   private client: OpenAI;
   private credsRepository: any;
 
