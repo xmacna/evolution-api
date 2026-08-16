@@ -323,7 +323,7 @@ test('Chatwoot success followed by webhook failure replays the exact enriched pa
   }
 });
 
-test('collision during an active lease cannot revoke fencing or quarantine the live delivery', { skip: !enabled }, async () => {
+test('payload variant during an active lease is deduplicated without revoking fencing', { skip: !enabled }, async () => {
   const repository = new PrismaClient();
   const inbox = new PrismaInboundInbox(repository as any);
   const suffix = randomUUID();
@@ -360,7 +360,7 @@ test('collision during an active lease cannot revoke fencing or quarantine the l
       },
       'enforce',
     );
-    const collision = await inbox.claim(
+    const variant = await inbox.claim(
       {
         sourceCluster,
         instanceId,
@@ -373,14 +373,41 @@ test('collision during an active lease cannot revoke fencing or quarantine the l
       },
       'enforce',
     );
-    assert.equal(collision.kind, 'collision');
-    assert.equal(collision.shouldDispatch, false);
+    assert.equal(variant.kind, 'duplicate');
+    assert.equal(variant.shouldDispatch, false);
+    assert.equal(variant.payloadHashMismatch, true);
     const live = await repository.inboundReceipt.findUniqueOrThrow({ where: { id: original.receiptId } });
     assert.equal(live.state, 'processing');
     assert.equal(live.leaseOwner, 'live-worker');
     assert.equal(live.leaseToken, original.leaseToken);
     assert.equal(await inbox.markSink(original.receiptId, 'webhook', 'sent', 'live-worker', original.leaseToken), true);
     assert.equal(await inbox.markDone(original.receiptId, 'live-worker', original.leaseToken!), true);
+
+    const independent = await inbox.claim(
+      {
+        sourceCluster,
+        instanceId,
+        instanceScope,
+        contactScope: 'contact@s.whatsapp.net',
+        messageId: `${messageId}-next`,
+        classification: 'real',
+        payloadHash: 'b'.repeat(64),
+        leaseOwner: 'next-worker',
+        messageData: {
+          key: { id: `${messageId}-next`, remoteJid: 'contact@s.whatsapp.net', fromMe: false },
+          pushName: 'Next message',
+          messageType: 'conversation',
+          message: { conversation: 'independent content' },
+          source: 'unknown',
+          messageTimestamp: 2,
+          instanceId,
+        },
+      },
+      'enforce',
+    );
+    assert.equal(independent.kind, 'claimed');
+    assert.equal(independent.shouldDispatch, true);
+    assert.equal(await inbox.markDone(independent.receiptId, 'next-worker', independent.leaseToken!), true);
   } finally {
     await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope } });
     await repository.instance.deleteMany({ where: { id: instanceId } });
@@ -622,7 +649,7 @@ test('reconciler leases with fencing, preserves completed sinks and orders each 
   }
 });
 
-test('stub promotes, collisions quarantine and instance recreation keeps the tombstone', { skip: !enabled }, async () => {
+test('stub promotes, payload variants deduplicate and instance recreation keeps the tombstone', { skip: !enabled }, async () => {
   const repository = new PrismaClient();
   const inbox = new PrismaInboundInbox(repository as any);
   const suffix = randomUUID();
@@ -682,7 +709,7 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
     assert.equal(promoted.shouldDispatch, true);
     assert.equal(await inbox.markDone(promoted.receiptId, 'promotion-worker', promoted.leaseToken!), true);
 
-    const collision = await inbox.claim(
+    const variant = await inbox.claim(
       {
         sourceCluster,
         instanceId,
@@ -696,9 +723,12 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
       },
       'enforce',
     );
-    assert.equal(collision.kind, 'collision');
-    assert.equal(collision.shouldDispatch, false);
-    assert.equal((await repository.inboundReceipt.findUniqueOrThrow({ where: { id: receiptId } })).state, 'quarantined');
+    assert.equal(variant.kind, 'duplicate');
+    assert.equal(variant.shouldDispatch, false);
+    assert.equal(variant.payloadHashMismatch, true);
+    const afterVariant = await repository.inboundReceipt.findUniqueOrThrow({ where: { id: receiptId } });
+    assert.equal(afterVariant.state, 'done');
+    assert.equal(afterVariant.collisionHash, null);
     await repository.inboundReceipt.update({
       where: { id: receiptId },
       data: { leaseExpiresAt: new Date(0) },
@@ -722,8 +752,9 @@ test('stub promotes, collisions quarantine and instance recreation keeps the tom
       'enforce',
     );
     assert.equal(replay.shouldDispatch, false);
-    const quarantined = await repository.inboundReceipt.findUniqueOrThrow({ where: { id: receiptId } });
-    assert.equal(quarantined.state, 'quarantined');
+    const deduplicated = await repository.inboundReceipt.findUniqueOrThrow({ where: { id: receiptId } });
+    assert.equal(deduplicated.state, 'done');
+    assert.ok(deduplicated.duplicateCount >= 100);
     assert.equal(await repository.inboundReceipt.count({ where: { id: receiptId } }), 1);
   } finally {
     if (receiptId) await repository.inboundReceipt.deleteMany({ where: { id: receiptId } });

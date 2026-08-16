@@ -103,7 +103,7 @@ test('canonical hash preserves material message context while ignoring device me
   assert.notEqual(inboundPayloadHash(base as any), inboundPayloadHash(divergentQuote as any));
 });
 
-test('receipt policy deduplicates exact replay, promotes every non-real class and quarantines real collision', () => {
+test('receipt policy uses the stable provider id and tolerates enriched replay envelopes', () => {
   const exact = { id: 'r1', classification: 'real', payloadHash: 'a' };
   assert.equal(evaluateExistingReceipt(exact, { classification: 'real', payloadHash: 'a' }), 'duplicate');
   assert.equal(
@@ -122,7 +122,41 @@ test('receipt policy deduplicates exact replay, promotes every non-real class an
     evaluateExistingReceipt(exact, { classification: 'protocol', payloadHash: 'b' }),
     'duplicate',
   );
-  assert.equal(evaluateExistingReceipt(exact, { classification: 'real', payloadHash: 'b' }), 'collision');
+  assert.equal(evaluateExistingReceipt(exact, { classification: 'real', payloadHash: 'b' }), 'duplicate');
+});
+
+test('CTWA referral enrichment changes the diagnostic hash without changing receipt identity', () => {
+  const original = {
+    key: { id: 'ctwa-provider-id', remoteJid: 'lead@s.whatsapp.net', fromMe: false },
+    message: {
+      extendedTextMessage: {
+        text: 'Quero informações',
+        contextInfo: { externalAdReply: { title: 'Campanha', sourceType: 'ad' } },
+      },
+    },
+  };
+  const enriched = {
+    ...original,
+    message: {
+      extendedTextMessage: {
+        text: 'Quero informações',
+        contextInfo: {
+          externalAdReply: { title: 'Campanha', sourceType: 'ad', mediaType: 2, thumbnailUrl: 'https://cdn.invalid/ad' },
+        },
+      },
+    },
+  };
+  const originalHash = inboundPayloadHash(original as any);
+  const enrichedHash = inboundPayloadHash(enriched as any);
+
+  assert.notEqual(originalHash, enrichedHash);
+  assert.equal(
+    evaluateExistingReceipt(
+      { id: 'receipt', classification: 'real', payloadHash: originalHash },
+      { classification: 'real', payloadHash: enrichedHash },
+    ),
+    'duplicate',
+  );
 });
 
 test('invalid persisted modes never enable global enforce', () => {

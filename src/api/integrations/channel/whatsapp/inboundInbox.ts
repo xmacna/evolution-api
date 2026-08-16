@@ -28,6 +28,10 @@ export type InboundClaimResult = {
   receiptId: string;
   messageRecordId?: string;
   shouldDispatch: boolean;
+  /** The provider reused its stable message id with a different transport
+   * envelope. This remains a duplicate, but callers may surface the variant
+   * for diagnostics without redispatching it. */
+  payloadHashMismatch?: boolean;
   leaseToken?: number;
   /** Set when the instance left enforce between the in-memory check and the
    * claim transaction; the caller must refresh its cached mode and continue
@@ -147,8 +151,13 @@ export function evaluateExistingReceipt(
 ): Exclude<InboundClaimKind, 'claimed' | 'bypassed'> {
   if (existing.payloadHash === incoming.payloadHash) return 'duplicate';
   if (existing.classification !== 'real' && incoming.classification === 'real') return 'promoted';
-  if (incoming.classification !== 'real') return 'duplicate';
-  return 'collision';
+  // sourceCluster + instanceScope + the provider-assigned messageId is the
+  // durable identity. Baileys can redeliver that same message after enriching
+  // device, ad-referral or transport fields, so payload byte equality cannot
+  // decide whether it is a second user message. A different real message has a
+  // different provider id and receives its own receipt. Keep the hash only as
+  // diagnostic evidence on the duplicate result.
+  return 'duplicate';
 }
 
 function isUniqueConstraint(error: unknown): boolean {
@@ -313,13 +322,15 @@ export class PrismaInboundInbox {
             });
             if (!current) throw new Error('Inbound receipt disappeared during promotion');
             if (current.classification === 'real') {
-              const currentKind = current.payloadHash === input.payloadHash ? 'duplicate' : 'collision';
+              const currentKind = evaluateExistingReceipt(current, input);
+              if (currentKind === 'promoted') throw new Error('Real receipt cannot be promoted again');
               return {
                 result: {
                   kind: currentKind,
                   receiptId: current.id,
                   messageRecordId: current.messageRecordId ?? undefined,
                   shouldDispatch: false,
+                  payloadHashMismatch: current.payloadHash !== input.payloadHash,
                 } as InboundClaimResult,
                 settledReplay: current,
                 settledKind: currentKind,
@@ -377,7 +388,8 @@ export class PrismaInboundInbox {
           where: { sourceCluster_instanceScope_messageId: key },
         });
         if (raced?.classification === 'real') {
-          const racedKind = raced.payloadHash === input.payloadHash ? 'duplicate' : 'collision';
+          const racedKind = evaluateExistingReceipt(raced, input);
+          if (racedKind === 'promoted') throw new Error('Real receipt cannot be promoted after a write conflict');
           return this.recordSettledReplay(raced, input, racedKind);
         }
         if (attempt === 7) throw error;
@@ -440,6 +452,7 @@ export class PrismaInboundInbox {
       receiptId: existing.id,
       messageRecordId: existing.messageRecordId ?? undefined,
       shouldDispatch: false,
+      payloadHashMismatch: existing.payloadHash !== input.payloadHash,
     };
   }
 
@@ -696,6 +709,7 @@ export class PrismaInboundInbox {
       messageRecordId: existing.messageRecordId ?? undefined,
       // Shadow observes only; it must preserve baseline delivery semantics.
       shouldDispatch: input.classification === 'real' || input.classification === 'protocol',
+      payloadHashMismatch: existing.payloadHash !== input.payloadHash,
     };
   }
 }

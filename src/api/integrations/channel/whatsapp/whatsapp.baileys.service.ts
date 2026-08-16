@@ -1569,7 +1569,7 @@ export class BaileysStartupService extends ChannelStartupService {
             }
             if (!claim.shouldDispatch) {
               this.logger.info(
-                `Inbound ${claim.kind} suppressed before sinks: ${inboundIdentity.instanceScope}/${inboundMessageId}`,
+                `Inbound ${claim.kind}${claim.payloadHashMismatch ? ' (payload variant)' : ''} suppressed before sinks: ${inboundIdentity.instanceScope}/${inboundMessageId}`,
               );
               continue;
             }
