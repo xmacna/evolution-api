@@ -5,6 +5,7 @@ import { IntegrationSession, N8n, N8nSetting } from '@prisma/client';
 import axios from 'axios';
 
 import { BaseChatbotService } from '../../base-chatbot.service';
+import { ChatbotDebounceMetadata, normalizeMessageTimestamp } from '../../chatbotDebounce';
 import { OpenaiService } from '../../openai/services/openai.service';
 
 export class N8nService extends BaseChatbotService<N8n, N8nSetting> {
@@ -48,6 +49,13 @@ export class N8nService extends BaseChatbotService<N8n, N8nSetting> {
       }
 
       const endpoint: string = n8n.webhookUrl;
+      // XMACNA_DEBOUNCE_DETACHED_518: `msg` e sempre a ULTIMA mensagem coalescida
+      // (o callback do buffer e substituido a cada merge), entao `keyId` e
+      // `messageTimestamp` ja descrevem o fim da janela. Os metadados do buffer
+      // trazem o inicio e o tamanho, para o workflow medir a defasagem sem
+      // adivinhar. Sem debounce, os tres campos descrevem uma mensagem so.
+      const debounceMetadata = msg?.debounceMetadata as ChatbotDebounceMetadata | undefined;
+      const lastMessageTimestamp = normalizeMessageTimestamp(msg?.messageTimestamp);
       const payload: any = {
         chatInput: content,
         sessionId: session.sessionId,
@@ -55,6 +63,9 @@ export class N8nService extends BaseChatbotService<N8n, N8nSetting> {
         pushName: pushName,
         keyId: msg?.key?.id,
         fromMe: msg?.key?.fromMe,
+        messageCount: debounceMetadata?.messageCount ?? 1,
+        firstMessageTimestamp: debounceMetadata?.firstMessageTimestamp ?? lastMessageTimestamp,
+        lastMessageTimestamp: debounceMetadata?.lastMessageTimestamp ?? lastMessageTimestamp,
         quotedMessage: msg?.contextInfo?.quotedMessage,
         instanceName: instance.instanceName,
         serverUrl: this.configService.get<HttpServer>('SERVER').URL,

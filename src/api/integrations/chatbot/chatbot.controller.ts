@@ -14,7 +14,12 @@ import { Logger } from '@config/logger.config';
 import { IntegrationSession } from '@prisma/client';
 import { findBotByTrigger } from '@utils/findBotByTrigger';
 
-import { ChatbotDebounceStore, processChatbotDebounce } from './chatbotDebounce';
+import {
+  ChatbotDebounceAcceptance,
+  ChatbotDebounceCallback,
+  ChatbotDebounceStore,
+  processChatbotDebounce,
+} from './chatbotDebounce';
 import { runBestEffortChatbots } from './chatbotDispatchPolicy';
 
 export type EmitData = {
@@ -126,22 +131,30 @@ export class ChatbotController {
     );
   }
 
+  /**
+   * XMACNA_DEBOUNCE_DETACHED_518: devolve o recibo de aceitacao no buffer, nao o
+   * fim do flush. O chamador NAO deve aguardar `acceptance.flushed` no caminho
+   * de entrega — ver o cabecalho de `chatbotDebounce.ts`.
+   */
   public processDebounce(
     userMessageDebounce: ChatbotDebounceStore,
     content: string,
     debounceKey: string,
     debounceTime: number,
-    callback: any,
-  ): Promise<void> {
-    return processChatbotDebounce(
-      userMessageDebounce,
-      content,
-      debounceKey,
-      debounceTime,
-      callback,
-      (merged) => this.logger.log('message debounced: ' + merged),
-      (flushed) => this.logger.log('Debounce complete. Processing message: ' + flushed),
-    );
+    callback: ChatbotDebounceCallback,
+    messageTimestamp?: unknown,
+  ): ChatbotDebounceAcceptance {
+    return processChatbotDebounce(userMessageDebounce, content, debounceKey, debounceTime, callback, {
+      messageTimestamp,
+      onMerged: (merged) => this.logger.log('message debounced: ' + merged),
+      onFlushed: (flushed) => this.logger.log('Debounce complete. Processing message: ' + flushed),
+      onFlushError: (error) =>
+        this.logger.error(
+          `XMACNA_DEBOUNCE_DETACHED_518 flush failed for ${debounceKey}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        ),
+    });
   }
 
   public checkIgnoreJids(ignoreJids: any, remoteJid: string) {
