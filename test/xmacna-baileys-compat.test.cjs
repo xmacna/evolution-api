@@ -120,6 +120,126 @@ test('security overrides resolve to the audited runtime versions', () => {
   const baileysRoot = require.resolve('baileys');
   const baileysLinkPreviewPackage = require.resolve('link-preview-js/package.json', { paths: [baileysRoot] });
   assert.equal(require(baileysLinkPreviewPackage).version, '5.0.0');
+
+  assert.equal(installedPackage('multer').version, '2.3.0');
+  assert.equal(installedPackage('sharp').version, '0.35.4');
+
+  const express = installedPackage('express');
+  const bodyParser = installedPackage('body-parser', express.dir);
+  assert.equal(installedPackage('qs', express.dir).version, '6.16.0');
+  assert.equal(installedPackage('qs', bodyParser.dir).version, '6.16.0');
+
+  const queryString = installedPackage('query-string', installedPackage('minio').dir);
+  assert.equal(installedPackage('decode-uri-component', queryString.dir).version, '0.5.0');
+
+  const prismaConfig = installedPackage('@prisma/config', installedPackage('prisma').dir);
+  assert.equal(installedPackage('deepmerge-ts', prismaConfig.dir).version, '8.0.0');
+});
+
+// Several audited packages do not export ./package.json, so resolve the installed copy the way
+// Node does for a parent package: walk node_modules upwards from the parent's directory.
+function installedPackage(name, fromDir = root) {
+  for (let dir = fromDir; ; dir = path.dirname(dir)) {
+    const packageDir = path.join(dir, 'node_modules', name);
+    const manifest = path.join(packageDir, 'package.json');
+    if (fs.existsSync(manifest)) return { dir: packageDir, version: JSON.parse(fs.readFileSync(manifest, 'utf8')).version };
+    if (path.dirname(dir) === dir) throw new Error(`${name} is not installed above ${fromDir}`);
+  }
+}
+
+async function withExpressServer(t, configure) {
+  const express = require('express');
+  const app = express();
+  configure(app);
+  const server = await new Promise((resolve) => {
+    const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
+  });
+  t.after(() => server.close());
+  return `http://127.0.0.1:${server.address().port}`;
+}
+
+test('Express 4 urlencoded parsing keeps nested bodies with the qs override', async (t) => {
+  const express = require('express');
+  const baseUrl = await withExpressServer(t, (app) => {
+    app.use(express.urlencoded({ extended: true, limit: '136mb' }));
+    app.post('/form', (request, response) => response.json(request.body));
+  });
+
+  const response = await fetch(`${baseUrl}/form`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'number=5511999999999&options[delay]=1200&list[0]=a&list[1]=b',
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    number: '5511999999999',
+    options: { delay: '1200' },
+    list: ['a', 'b'],
+  });
+});
+
+test('multer memoryStorage upload remains compatible after the security update', async (t) => {
+  const multer = require('multer');
+  const upload = multer({ storage: multer.memoryStorage() });
+  const baseUrl = await withExpressServer(t, (app) => {
+    app.post('/media', upload.single('file'), (request, response) => {
+      response.json({
+        number: request.body.number,
+        name: request.file.originalname,
+        mimetype: request.file.mimetype,
+        content: request.file.buffer.toString('utf8'),
+      });
+    });
+  });
+
+  const form = new FormData();
+  form.append('number', '5511999999999');
+  form.append('file', new Blob(['inbox-probe'], { type: 'text/plain' }), 'probe.txt');
+  const response = await fetch(`${baseUrl}/media`, { method: 'POST', body: form });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    number: '5511999999999',
+    name: 'probe.txt',
+    mimetype: 'text/plain',
+    content: 'inbox-probe',
+  });
+});
+
+test('MinIO client loads and signs requests with the decode-uri-component override', async () => {
+  // query-string 7 is CommonJS and decode-uri-component 0.5.0 is ESM-only, so query-string.parse
+  // cannot decode under this override. MinIO only calls query-string.stringify; this test pins
+  // that contract so a MinIO update that starts parsing query strings fails here, not in runtime.
+  const minioSources = ['node_modules/minio/dist/main/internal/client.js', 'node_modules/minio/dist/main/helpers.js'];
+  for (const source of minioSources) {
+    const calls = read(source).match(/\b(?:qs|querystring)\.[A-Za-z]+/g) ?? [];
+    assert.ok(calls.length > 0, `${source} no longer references query-string`);
+    assert.deepEqual([...new Set(calls.map((call) => call.split('.')[1]))], ['stringify'], source);
+  }
+
+  const MinIo = require('minio');
+  const client = new MinIo.Client({
+    endPoint: '127.0.0.1',
+    port: 9,
+    useSSL: false,
+    accessKey: 'probe-access',
+    secretKey: 'probe-secret',
+    region: 'us-east-1',
+  });
+  const url = new URL(await client.presignedGetObject('evolution', 'media/probe file.jpg', 60));
+  assert.equal(url.pathname, '/evolution/media/probe%20file.jpg');
+  assert.equal(url.searchParams.get('X-Amz-Expires'), '60');
+  assert.match(url.searchParams.get('X-Amz-Signature'), /^[0-9a-f]{64}$/);
+});
+
+test('Prisma config deepmerge keeps plain-object merge semantics on deepmerge-ts 8', async () => {
+  const prismaConfigRoot = require.resolve('@prisma/config', { paths: [require.resolve('prisma/package.json')] });
+  const { deepmerge } = await import(require.resolve('deepmerge-ts', { paths: [prismaConfigRoot] }));
+  assert.deepEqual(deepmerge({ migrations: { path: 'a' }, earlyAccess: false }, { migrations: { seed: 'b' } }), {
+    migrations: { path: 'a', seed: 'b' },
+    earlyAccess: false,
+  });
 });
 
 test('Chatwoot SDK request remains compatible with the Axios override', async (t) => {
