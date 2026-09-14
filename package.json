@@ -14,7 +14,7 @@
     "dev:server": "tsx watch ./src/main.ts",
     "test": "tsx watch ./test/all.test.ts",
     "test:xmacna-compat": "node --test test/xmacna-baileys-compat.test.cjs",
-    "test:xmacna-inbox": "tsx --test test/xmacna-inbound-inbox.test.ts test/xmacna-inbound-sink-dispatch.test.ts test/xmacna-inbound-service-contracts.test.ts test/xmacna-baileys-message-processor.test.ts test/xmacna-chatbot-debounce.test.ts",
+    "test:xmacna-inbox": "tsx --test test/xmacna-s3-storage.test.ts test/xmacna-inbound-inbox.test.ts test/xmacna-inbound-sink-dispatch.test.ts test/xmacna-inbound-service-contracts.test.ts test/xmacna-baileys-message-processor.test.ts test/xmacna-chatbot-debounce.test.ts",
     "test:xmacna-inbox:postgres": "tsx --test test/xmacna-inbound-inbox.postgres.test.ts",
     "inbound-inbox:maintenance": "tsx src/cli/inboundInboxMaintenance.ts",
     "lint": "eslint --fix --ext .ts src",
@@ -73,7 +73,9 @@
   },
   "dependencies": {
     "@adiwajshing/keyed-db": "^0.2.4",
+    "@aws-sdk/client-s3": "^3.1132.0",
     "@aws-sdk/client-sqs": "^3.891.0",
+    "@aws-sdk/s3-request-presigner": "^3.1132.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@figuro/chatwoot-sdk": "^1.1.16",
     "@hapi/boom": "^10.0.1",
@@ -93,10 +95,10 @@
     "eventemitter2": "^6.4.9",
     "express": "^4.22.2",
     "express-async-errors": "^3.1.1",
+    "fetch-socks": "^1.3.2",
     "fluent-ffmpeg": "^2.1.3",
     "form-data": "^4.0.6",
     "https-proxy-agent": "^7.0.6",
-    "fetch-socks": "^1.3.2",
     "i18next": "^23.7.19",
     "jimp": "^1.6.0",
     "json-schema": "^0.4.0",
@@ -109,7 +111,6 @@
     "mediainfo.js": "^0.3.4",
     "mime": "^4.0.0",
     "mime-types": "^2.1.35",
-    "minio": "^8.0.7",
     "multer": "^2.3.0",
     "nats": "^2.29.1",
     "node-cache": "^5.1.2",
@@ -139,7 +140,6 @@
       "fast-xml-parser": "5.10.1"
     },
     "qs": "6.16.0",
-    "decode-uri-component": "0.5.0",
     "deepmerge-ts": "8.0.0"
   },
   "devDependencies": {

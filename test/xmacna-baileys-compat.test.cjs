@@ -129,8 +129,11 @@ test('security overrides resolve to the audited runtime versions', () => {
   assert.equal(installedPackage('qs', express.dir).version, '6.16.0');
   assert.equal(installedPackage('qs', bodyParser.dir).version, '6.16.0');
 
-  const queryString = installedPackage('query-string', installedPackage('minio').dir);
-  assert.equal(installedPackage('decode-uri-component', queryString.dir).version, '0.5.0');
+  // xmacna/elysium#518 (2026-09-14): minio (and its unpatchable stream-json) is gone; the S3
+  // wrapper speaks @aws-sdk/client-s3. Pin the swap so a merge never brings minio back.
+  assert.throws(() => installedPackage('minio'), /not installed/);
+  assert.ok(installedPackage('@aws-sdk/client-s3').version);
+  assert.ok(installedPackage('@aws-sdk/s3-request-presigner').version);
 
   const prismaConfig = installedPackage('@prisma/config', installedPackage('prisma').dir);
   assert.equal(installedPackage('deepmerge-ts', prismaConfig.dir).version, '8.0.0');
@@ -207,27 +210,22 @@ test('multer memoryStorage upload remains compatible after the security update',
   });
 });
 
-test('MinIO client loads and signs requests with the decode-uri-component override', async () => {
-  // query-string 7 is CommonJS and decode-uri-component 0.5.0 is ESM-only, so query-string.parse
-  // cannot decode under this override. MinIO only calls query-string.stringify; this test pins
-  // that contract so a MinIO update that starts parsing query strings fails here, not in runtime.
-  const minioSources = ['node_modules/minio/dist/main/internal/client.js', 'node_modules/minio/dist/main/helpers.js'];
-  for (const source of minioSources) {
-    const calls = read(source).match(/\b(?:qs|querystring)\.[A-Za-z]+/g) ?? [];
-    assert.ok(calls.length > 0, `${source} no longer references query-string`);
-    assert.deepEqual([...new Set(calls.map((call) => call.split('.')[1]))], ['stringify'], source);
-  }
-
-  const MinIo = require('minio');
-  const client = new MinIo.Client({
-    endPoint: '127.0.0.1',
-    port: 9,
-    useSSL: false,
-    accessKey: 'probe-access',
-    secretKey: 'probe-secret',
+test('S3 wrapper presigns through @aws-sdk/client-s3 (minio and its stream-json are gone)', async () => {
+  // xmacna/elysium#518 (2026-09-14): the storage wrapper moved from minio to the AWS SDK so the
+  // runtime audit can be clean. Pin the presign contract the media callers rely on: path,
+  // expiry and a SigV4 signature, with no minio on disk.
+  assert.ok(!fs.existsSync(path.join(root, 'node_modules/minio')), 'minio must not be installed');
+  const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+  const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+  const client = new S3Client({
     region: 'us-east-1',
+    endpoint: 'http://127.0.0.1:9',
+    forcePathStyle: true,
+    credentials: { accessKeyId: 'probe-access', secretAccessKey: 'probe-secret' },
   });
-  const url = new URL(await client.presignedGetObject('evolution', 'media/probe file.jpg', 60));
+  const url = new URL(
+    await getSignedUrl(client, new GetObjectCommand({ Bucket: 'evolution', Key: 'media/probe file.jpg' }), { expiresIn: 60 }),
+  );
   assert.equal(url.pathname, '/evolution/media/probe%20file.jpg');
   assert.equal(url.searchParams.get('X-Amz-Expires'), '60');
   assert.match(url.searchParams.get('X-Amz-Signature'), /^[0-9a-f]{64}$/);
