@@ -30,8 +30,6 @@ export class EvoaiController extends BaseChatbotController<EvoaiModel, EvoaiDto>
   botRepository: any;
   settingsRepository: any;
   sessionRepository: any;
-  userMessageDebounce: { [key: string]: { message: string; timeoutId: NodeJS.Timeout } } = {};
-
   protected getFallbackBotId(settings: any): string | undefined {
     return settings?.evoaiIdFallback;
   }

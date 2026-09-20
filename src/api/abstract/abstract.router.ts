@@ -8,6 +8,8 @@ import { Request } from 'express';
 import { JSONSchema7 } from 'json-schema';
 import { validate } from 'jsonschema';
 
+import { mergeRequestIdentity } from './requestIdentity';
+
 type DataValidate<T> = {
   request: Request;
   schema: JSONSchema7;
@@ -31,11 +33,13 @@ export abstract class RouterBroker {
 
     const ref = new ClassRef();
     const body = request.body;
-    const instance = request.params as unknown as InstanceDto;
-
-    if (request?.query && Object.keys(request.query).length > 0) {
-      Object.assign(instance, request.query);
-    }
+    // Route params are the authenticated resource identity and must always win.
+    // Query fields may carry optional operation data, but can never retarget an
+    // already-guarded request to another tenant via ?instanceName=...
+    const instance = mergeRequestIdentity(
+      request.params,
+      request?.query && Object.keys(request.query).length > 0 ? (request.query as Record<string, unknown>) : undefined,
+    ) as unknown as InstanceDto;
 
     if (request.originalUrl.includes('/instance/create')) {
       Object.assign(instance, body);

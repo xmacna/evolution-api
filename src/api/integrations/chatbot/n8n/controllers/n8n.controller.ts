@@ -30,7 +30,9 @@ export class N8nController extends BaseChatbotController<N8nModel, N8nDto> {
   botRepository: any;
   settingsRepository: any;
   sessionRepository: any;
-  userMessageDebounce: { [key: string]: { message: string; timeoutId: NodeJS.Timeout } } = {};
+  protected override shouldPropagateInboundFailure(): boolean {
+    return true;
+  }
 
   protected getFallbackBotId(settings: any): string | undefined {
     return settings?.fallbackId;

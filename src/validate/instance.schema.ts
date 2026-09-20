@@ -31,6 +31,7 @@ export const instanceSchema: JSONSchema7 = {
     number: { type: 'string', pattern: '^\\d+[\\.@\\w-]+' },
     businessId: { type: 'string' },
     qrcode: { type: 'boolean' },
+    inboundInboxMode: { type: 'string', enum: ['off', 'shadow', 'enforce'] },
     Integration: {
       type: 'string',
       enum: Object.values(Integration),
@@ -226,4 +227,13 @@ export const presenceOnlySchema: JSONSchema7 = {
     },
   },
   required: ['presence'],
+};
+
+export const inboundInboxModeSchema: JSONSchema7 = {
+  $id: v4(),
+  type: 'object',
+  properties: {
+    mode: { type: 'string', enum: ['off', 'shadow', 'enforce'] },
+  },
+  required: ['mode'],
 };

@@ -15,6 +15,7 @@ export class InstanceDto extends IntegrationDto {
   connectionStatus?: string;
   profileName?: string;
   profilePicUrl?: string;
+  inboundInboxMode?: 'off' | 'shadow' | 'enforce';
   // settings
   rejectCall?: boolean;
   msgCall?: string;
@@ -56,4 +57,8 @@ export class InstanceDto extends IntegrationDto {
 
 export class SetPresenceDto {
   presence: WAPresence;
+}
+
+export class SetInboundInboxModeDto {
+  mode: 'off' | 'shadow' | 'enforce';
 }

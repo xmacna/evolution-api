@@ -61,6 +61,7 @@ export class ChannelStartupService {
     this.instance.token = instance.token;
     this.instance.businessId = instance.businessId;
     this.instance.ownerJid = instance.ownerJid;
+    this.instance.inboundInboxMode = instance.inboundInboxMode;
 
     if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot?.enabled) {
       this.chatwootService.eventWhatsapp(
@@ -102,6 +103,10 @@ export class ChannelStartupService {
 
   public set integration(integration: string) {
     this.instance.integration = integration;
+  }
+
+  public setInboundInboxMode(mode: 'off' | 'shadow' | 'enforce'): void {
+    this.instance.inboundInboxMode = mode;
   }
 
   public get integration() {
