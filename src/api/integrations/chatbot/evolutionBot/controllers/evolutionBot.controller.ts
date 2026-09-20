@@ -27,8 +27,6 @@ export class EvolutionBotController extends BaseChatbotController<EvolutionBot, 
   botRepository: any;
   settingsRepository: any;
   sessionRepository: any;
-  userMessageDebounce: { [key: string]: { message: string; timeoutId: NodeJS.Timeout } } = {};
-
   // Implementation of abstract methods required by BaseChatbotController
 
   protected getFallbackBotId(settings: any): string | undefined {

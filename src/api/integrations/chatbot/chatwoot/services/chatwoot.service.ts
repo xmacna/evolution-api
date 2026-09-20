@@ -1,5 +1,7 @@
 import { InstanceDto } from '@api/dto/instance.dto';
 import { Options, Quoted, SendAudioDto, SendMediaDto, SendTextDto } from '@api/dto/sendMessage.dto';
+import { resolveInboundMode } from '@api/integrations/channel/whatsapp/inboundInbox';
+import { buildChatwootEditSourceId } from '@api/integrations/chatbot/chatwoot/chatwootMessageIdentity';
 import { ChatwootDto } from '@api/integrations/chatbot/chatwoot/dto/chatwoot.dto';
 import { postgresClient } from '@api/integrations/chatbot/chatwoot/libs/postgres.client';
 import { chatwootImport } from '@api/integrations/chatbot/chatwoot/utils/chatwoot-import-helper';
@@ -7,7 +9,7 @@ import { PrismaRepository } from '@api/repository/repository.service';
 import { CacheService } from '@api/services/cache.service';
 import { WAMonitoringService } from '@api/services/monitor.service';
 import { Events } from '@api/types/wa.types';
-import { Chatwoot, ConfigService, Database, HttpServer } from '@config/env.config';
+import { Chatwoot, ConfigService, Database, HttpServer, InboundInbox } from '@config/env.config';
 import { Logger } from '@config/logger.config';
 import ChatwootClient, {
   ChatwootAPIConfig,
@@ -43,6 +45,13 @@ interface ChatwootMessage {
 
 export class ChatwootService {
   private readonly logger = new Logger('ChatwootService');
+
+  private shouldSurfaceInboundFailure(instance?: InstanceDto): boolean {
+    if (!instance?.instanceName) return false;
+    const waInstance = this.waMonitor.waInstances[instance.instanceName];
+    const fallback = this.configService.get<InboundInbox>('INBOUND_INBOX').MODE;
+    return resolveInboundMode(waInstance?.instance?.inboundInboxMode, fallback) === 'enforce';
+  }
 
   // Lock polling delay
   private readonly LOCK_POLLING_DELAY_MS = 300; // Delay between lock status checks
@@ -932,10 +941,23 @@ export class ChatwootService {
     sourceId?: string,
     quotedMsg?: MessageModel,
   ) {
+    if (sourceId && this.isImportHistoryAvailable()) {
+      try {
+        const existing = await chatwootImport.getExistingMessageBySourceId(sourceId, conversationId);
+        if (existing) {
+          this.logger.warn(`Message ${sourceId} already saved on Chatwoot`);
+          return { ...existing, xmacnaDuplicate: true } as any;
+        }
+      } catch (error) {
+        this.logger.error(`Unable to reconcile Chatwoot source_id ${sourceId}: ${error}`);
+        if (this.shouldSurfaceInboundFailure(instance)) throw error;
+      }
+    }
     const client = await this.clientCw(instance);
 
     if (!client) {
       this.logger.warn('client not found');
+      if (this.shouldSurfaceInboundFailure(instance)) throw new Error('Chatwoot client unavailable');
       return null;
     }
 
@@ -961,6 +983,7 @@ export class ChatwootService {
 
     if (!message) {
       this.logger.warn('message not found');
+      if (this.shouldSurfaceInboundFailure(instance)) throw new Error('Chatwoot message create returned empty');
       return null;
     }
 
@@ -1115,6 +1138,8 @@ export class ChatwootService {
       return data;
     } catch (error) {
       this.logger.error(error);
+      if (this.shouldSurfaceInboundFailure(instance)) throw error;
+      return null;
     }
   }
 
@@ -1204,7 +1229,8 @@ export class ChatwootService {
         const response = await axios.get(media, {
           responseType: 'arraybuffer',
         });
-        mimeType = response.headers['content-type'];
+        const responseContentType = response.headers['content-type'];
+        mimeType = typeof responseContentType === 'string' ? responseContentType : '';
       }
 
       let type = 'document';
@@ -2213,8 +2239,9 @@ export class ChatwootService {
         const isAdsMessage = (adsMessage && adsMessage.title) || adsMessage.body || adsMessage.thumbnailUrl;
         if (isAdsMessage) {
           const imgBuffer = await axios.get(adsMessage.thumbnailUrl, { responseType: 'arraybuffer' });
+          const responseContentType = imgBuffer.headers['content-type'];
 
-          const extension = mimeTypes.extension(imgBuffer.headers['content-type']);
+          const extension = typeof responseContentType === 'string' && mimeTypes.extension(responseContentType);
           const mimeType = extension && mimeTypes.lookup(extension);
 
           if (!mimeType) {
@@ -2383,6 +2410,7 @@ export class ChatwootService {
         if (message && message.chatwootConversationId && message.chatwootMessageId) {
           // Criar nova mensagem com formato: "Mensagem editada:\n\nteste1"
           const editedText = `\n\n\`${i18next.t('cw.message.edited')}:\`\n\n${editedMessageContent}`;
+          const editedSourceId = buildChatwootEditSourceId(body.key.id, editedMessageContent);
 
           const send = await this.createMessage(
             instance,
@@ -2394,7 +2422,7 @@ export class ChatwootService {
             {
               message: { extendedTextMessage: { contextInfo: { stanzaId: key.id } } },
             },
-            'WAID:' + body.key.id,
+            editedSourceId,
             null,
           );
           if (!send) {
@@ -2524,6 +2552,14 @@ export class ChatwootService {
       }
     } catch (error) {
       this.logger.error(error);
+      const waInstance = this.waMonitor.waInstances[instance.instanceName];
+      const inboxDefault = this.configService.get<InboundInbox>('INBOUND_INBOX').MODE;
+      if (
+        event === Events.MESSAGES_UPSERT &&
+        resolveInboundMode(waInstance?.instance?.inboundInboxMode, inboxDefault) === 'enforce'
+      ) {
+        throw error;
+      }
     }
   }
 

@@ -69,6 +69,7 @@ import {
   configService,
   ConfigSessionPhone,
   Database,
+  InboundInbox,
   Log,
   Openai,
   ProviderSession,
@@ -153,6 +154,15 @@ import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
 import { BaileysMessageProcessor } from './baileysMessage.processor';
+import {
+  classifyInboundMessage,
+  inboundPayloadHash,
+  normalizeContactScope,
+  normalizeInstanceScope,
+  PrismaInboundInbox,
+  resolveInboundMode,
+} from './inboundInbox';
+import { attemptDurableInboundSink, DurableInboundSinkFailure } from './inboundSinkDispatch';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 
 export interface ExtendedIMessageKey extends proto.IMessageKey {
@@ -224,8 +234,17 @@ async function getVideoDuration(input: Buffer | string | Readable): Promise<numb
   return Math.round(parseFloat(duration));
 }
 
+type XmacnaConnectState = { lastStartedAt: number; promise?: Promise<WASocket> };
+const xmacnaConnectStates: Map<string, XmacnaConnectState> =
+  (globalThis as any).__xmacnaEvolutionConnectStates ||
+  ((globalThis as any).__xmacnaEvolutionConnectStates = new Map<string, XmacnaConnectState>());
+
 export class BaileysStartupService extends ChannelStartupService {
   private messageProcessor = new BaileysMessageProcessor();
+  private readonly inboundInbox: PrismaInboundInbox;
+  private inboundWorkerTimer?: NodeJS.Timeout;
+  private inboundWorkerRunning = false;
+  private readonly inboundWorkerOwner = `baileys-${v4()}`;
 
   constructor(
     public readonly configService: ConfigService,
@@ -241,6 +260,7 @@ export class BaileysStartupService extends ChannelStartupService {
     this.messageProcessor.mount({
       onMessageReceive: this.messageHandle['messages.upsert'].bind(this), // Bind the method to the current context
     });
+    this.inboundInbox = new PrismaInboundInbox(this.prismaRepository);
 
     this.authStateProvider = new AuthStateProvider(this.providerFiles);
   }
@@ -266,6 +286,8 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async logoutInstance() {
     this.messageProcessor.onDestroy();
+    if (this.inboundWorkerTimer) clearInterval(this.inboundWorkerTimer);
+    this.inboundWorkerTimer = undefined;
     await this.client?.logout('Log out instance: ' + this.instanceName);
 
     this.client?.ws?.close();
@@ -721,31 +743,279 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async connectToWhatsapp(number?: string): Promise<WASocket> {
+    const stateKey = normalizeInstanceScope(this.instance.name);
+    const state = xmacnaConnectStates.get(stateKey) || { lastStartedAt: 0 };
+    xmacnaConnectStates.set(stateKey, state);
+    if (state.promise) {
+      this.logger.info('XMACNA_PATCH_DEBOUNCE: coalescing concurrent connectToWhatsapp caller');
+      return state.promise;
+    }
+    const connectPromise = this.connectToWhatsappOnce(number, state);
+    state.promise = connectPromise;
     try {
-      this.loadChatwoot();
-      this.loadSettings();
-      this.loadWebhook();
-      this.loadProxy();
-
-      // Remontar o messageProcessor para garantir que está funcionando após reconexão
-      this.messageProcessor.mount({
-        onMessageReceive: this.messageHandle['messages.upsert'].bind(this),
-      });
-
-      return await this.createClient(number);
+      return await connectPromise;
     } catch (error) {
       this.logger.error(error);
       throw new InternalServerErrorException(error?.toString());
+    } finally {
+      if (state.promise === connectPromise) state.promise = undefined;
     }
   }
 
-  public async reloadConnection(): Promise<WASocket> {
-    try {
-      return await this.createClient(this.phoneNumber);
-    } catch (error) {
-      this.logger.error(error);
-      throw new InternalServerErrorException(error?.toString());
+  private async connectToWhatsappOnce(number: string | undefined, state: XmacnaConnectState): Promise<WASocket> {
+    const waitMs = Math.max(0, 10_000 - (Date.now() - state.lastStartedAt));
+    if (waitMs > 0) {
+      this.logger.info(`XMACNA_PATCH_DEBOUNCE: delaying reconnect by ${waitMs}ms`);
+      await delay(waitMs);
     }
+    state.lastStartedAt = Date.now();
+    this.loadChatwoot();
+    this.loadSettings();
+    this.loadWebhook();
+    this.loadProxy();
+    this.messageProcessor.mount({
+      onMessageReceive: this.messageHandle['messages.upsert'].bind(this),
+    });
+    const client = await this.createClient(number);
+    this.startInboundInboxWorker();
+    return client;
+  }
+
+  public async reloadConnection(): Promise<WASocket> {
+    return this.connectToWhatsapp(this.phoneNumber);
+  }
+
+  private startInboundInboxWorker(): void {
+    if (this.currentInboundMode() !== 'enforce' || this.inboundWorkerTimer) return;
+    const run = () => void this.runInboundInboxWorker().catch((error) => this.logger.error(`Inbound worker: ${error}`));
+    this.inboundWorkerTimer = setInterval(run, 1000);
+    this.inboundWorkerTimer.unref();
+    run();
+  }
+
+  public override setInboundInboxMode(mode: 'off' | 'shadow' | 'enforce'): void {
+    super.setInboundInboxMode(mode);
+    if (mode === 'enforce') {
+      this.startInboundInboxWorker();
+    } else if (this.inboundWorkerTimer) {
+      clearInterval(this.inboundWorkerTimer);
+      this.inboundWorkerTimer = undefined;
+    }
+  }
+
+  private async runInboundInboxWorker(): Promise<void> {
+    if (this.inboundWorkerRunning || this.currentInboundMode() !== 'enforce') return;
+    this.inboundWorkerRunning = true;
+    const config = this.configService.get<InboundInbox>('INBOUND_INBOX');
+    const instanceScope = normalizeInstanceScope(this.instance.name);
+    try {
+      for (let processed = 0; processed < 25; processed += 1) {
+        const item = await this.inboundInbox.leaseNext(
+          config.SOURCE_CLUSTER,
+          instanceScope,
+          this.inboundWorkerOwner,
+          config.LEASE_SECONDS,
+          config.MAX_ATTEMPTS,
+        );
+        if (!item) break;
+        await this.dispatchRecoveredInbound(item, config);
+      }
+    } finally {
+      this.inboundWorkerRunning = false;
+    }
+  }
+
+  private currentInboundMode(): 'off' | 'shadow' | 'enforce' {
+    const fallback = this.configService.get<InboundInbox>('INBOUND_INBOX').MODE;
+    return resolveInboundMode(this.instance.inboundInboxMode, fallback);
+  }
+
+  private async dispatchRecoveredInbound(
+    item: {
+      receiptId: string;
+      leaseOwner: string;
+      leaseToken: number;
+      webhookState: string;
+      chatwootState: string;
+      chatbotState: string;
+      message: Record<string, unknown>;
+    },
+    config: InboundInbox,
+  ): Promise<void> {
+    const messageRaw = item.message as any;
+    const failures: DurableInboundSinkFailure[] = [];
+    const heartbeat = setInterval(
+      () => {
+        void this.inboundInbox
+          .heartbeat(item.receiptId, item.leaseOwner, item.leaseToken, config.LEASE_SECONDS)
+          .then((renewed) => {
+            if (!renewed) this.logger.error(`Recovered inbound lease fencing lost for ${item.receiptId}`);
+          })
+          .catch((error) => this.logger.error(`Recovered inbound heartbeat failed: ${error}`));
+      },
+      Math.max(1000, Math.floor((config.LEASE_SECONDS * 1000) / 3)),
+    );
+    heartbeat.unref();
+
+    const markSink = async (
+      sink: 'webhook' | 'chatwoot' | 'chatbot',
+      state: 'sent' | 'skipped' | 'failed',
+      messageData?: Record<string, unknown>,
+    ) => {
+      const marked = await this.inboundInbox.markSink(
+        item.receiptId,
+        sink,
+        state,
+        item.leaseOwner,
+        item.leaseToken,
+        messageData,
+      );
+      if (!marked) throw new Error(`Stale inbound lease while marking ${sink}`);
+    };
+
+    const attempt = async (
+      sink: 'webhook' | 'chatwoot' | 'chatbot',
+      currentState: string,
+      operation: () => Promise<'sent' | 'skipped'>,
+    ) => {
+      if (['sent', 'skipped'].includes(currentState)) return 'already-settled' as const;
+      const failure = await attemptDurableInboundSink({
+        sink,
+        operation,
+        mark: (markedSink, state) => markSink(markedSink, state, messageRaw),
+        onDeliveryFailure: ({ error }) =>
+          this.logger.error(`Recovered inbound ${sink} failed for ${item.receiptId}: ${error.message}`),
+      });
+      if (failure) {
+        failures.push(failure);
+        return 'failed' as const;
+      }
+      return 'succeeded' as const;
+    };
+
+    try {
+      await attempt('chatwoot', item.chatwootState, async () => {
+        if (
+          !this.configService.get<Chatwoot>('CHATWOOT').ENABLED ||
+          !this.localChatwoot?.enabled ||
+          messageRaw.key?.id?.includes('@broadcast')
+        ) {
+          return 'skipped';
+        }
+        const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
+          Events.MESSAGES_UPSERT,
+          { instanceName: this.instance.name, instanceId: this.instanceId },
+          messageRaw,
+        );
+        if (chatwootSentMessage?.id) {
+          messageRaw.chatwootMessageId = chatwootSentMessage.id;
+          messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
+          messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
+        }
+        return 'sent';
+      });
+
+      await attempt('webhook', item.webhookState, async () => {
+        await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
+        return 'sent';
+      });
+
+      const recoveredChatbot = await attempt('chatbot', item.chatbotState, async () => {
+        await chatbotController.emitDurableInbound({
+          instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+          remoteJid: messageRaw.key.remoteJid,
+          msg: messageRaw,
+          pushName: messageRaw.pushName,
+        });
+        return 'sent';
+      });
+      if (recoveredChatbot === 'succeeded') {
+        await chatbotController.emitBestEffortInbound({
+          instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+          remoteJid: messageRaw.key.remoteJid,
+          msg: messageRaw,
+          pushName: messageRaw.pushName,
+        });
+      }
+
+      if (failures.length > 0) {
+        const summary = failures.map(({ sink, error }) => `${sink}: ${error.message}`).join('; ');
+        const failed = await this.inboundInbox.markFailed(
+          item.receiptId,
+          item.leaseOwner,
+          item.leaseToken,
+          summary,
+          config.MAX_ATTEMPTS,
+        );
+        if (!failed) throw new Error(`Stale inbound lease while failing ${item.receiptId}`);
+      } else {
+        const done = await this.inboundInbox.markDone(item.receiptId, item.leaseOwner, item.leaseToken);
+        if (!done) throw new Error(`Stale inbound lease while completing ${item.receiptId}`);
+      }
+    } catch (error) {
+      const failed = await this.inboundInbox.markFailed(
+        item.receiptId,
+        item.leaseOwner,
+        item.leaseToken,
+        error,
+        config.MAX_ATTEMPTS,
+      );
+      if (!failed) this.logger.error(`Recovered inbound fencing lost while handling ${item.receiptId}: ${error}`);
+    } finally {
+      clearInterval(heartbeat);
+    }
+  }
+
+  private async markActiveInboundSink(
+    receipt: { id: string; leaseOwner: string; leaseToken: number },
+    sink: 'webhook' | 'chatwoot' | 'chatbot',
+    state: 'sent' | 'skipped' | 'failed',
+    messageData?: Record<string, unknown>,
+  ): Promise<void> {
+    const marked = await this.inboundInbox.markSink(
+      receipt.id,
+      sink,
+      state,
+      receipt.leaseOwner,
+      receipt.leaseToken,
+      messageData,
+    );
+    if (!marked) throw new Error(`Stale inbound lease while marking ${sink} for ${receipt.id}`);
+  }
+
+  private async persistActiveInboundMessage(
+    receipt: { id: string; leaseOwner: string; leaseToken: number },
+    messageData: Record<string, unknown>,
+  ): Promise<void> {
+    const persisted = await this.inboundInbox.persistMessage(
+      receipt.id,
+      receipt.leaseOwner,
+      receipt.leaseToken,
+      messageData,
+    );
+    if (!persisted) throw new Error(`Stale inbound lease while persisting payload for ${receipt.id}`);
+  }
+
+  private async completeActiveInbound(receipt: { id: string; leaseOwner: string; leaseToken: number }): Promise<void> {
+    const done = await this.inboundInbox.markDone(receipt.id, receipt.leaseOwner, receipt.leaseToken);
+    if (!done) throw new Error(`Stale inbound lease while completing ${receipt.id}`);
+  }
+
+  private async settleActiveInbound(
+    receipt: { id: string; leaseOwner: string; leaseToken: number },
+    failures: Array<{ sink: 'webhook' | 'chatwoot' | 'chatbot'; error: Error }>,
+    maxAttempts: number,
+  ): Promise<void> {
+    if (failures.length === 0) return this.completeActiveInbound(receipt);
+    const summary = failures.map(({ sink, error }) => `${sink}: ${error.message}`).join('; ');
+    const marked = await this.inboundInbox.markFailed(
+      receipt.id,
+      receipt.leaseOwner,
+      receipt.leaseToken,
+      summary,
+      maxAttempts,
+    );
+    if (!marked) throw new Error(`Stale inbound lease while failing ${receipt.id}`);
   }
 
   private readonly chatHandle = {
@@ -1083,8 +1353,56 @@ export class BaileysStartupService extends ChannelStartupService {
       { messages, type, requestId }: { messages: WAMessage[]; type: MessageUpsertType; requestId?: string },
       settings: any,
     ) => {
+      let activeReceipt:
+        { id: string; leaseOwner: string; leaseToken: number; mode: 'off' | 'shadow' | 'enforce' } | undefined;
+      let activeSink: 'webhook' | 'chatwoot' | 'chatbot' | undefined;
+      let activeSinkFailures: DurableInboundSinkFailure[] = [];
+      let heartbeatTimer: NodeJS.Timeout | undefined;
+      let activeInboundMode: 'off' | 'shadow' | 'enforce' = 'off';
       try {
         for (const received of messages) {
+          activeSinkFailures = [];
+          const inboundConfig = this.configService.get<InboundInbox>('INBOUND_INBOX');
+          const inboundMode = resolveInboundMode(this.instance.inboundInboxMode, inboundConfig.MODE);
+          activeInboundMode = inboundMode;
+          const inboundClassification = classifyInboundMessage(received);
+          const inboundMessageId = received.key?.id;
+          const inboundContactScope = normalizeContactScope(
+            (received.key as any)?.remoteJidAlt || received.key?.remoteJid,
+          );
+          const inboundIdentity = inboundMessageId
+            ? {
+                sourceCluster: inboundConfig.SOURCE_CLUSTER,
+                instanceScope: normalizeInstanceScope(this.instance.name),
+                messageId: inboundMessageId,
+              }
+            : undefined;
+
+          if (inboundMode !== 'off' && inboundIdentity && inboundClassification !== 'real') {
+            const observed = await this.inboundInbox.claim(
+              {
+                ...inboundIdentity,
+                instanceId: this.instanceId,
+                contactScope: inboundContactScope,
+                classification: inboundClassification,
+                payloadHash: inboundPayloadHash(received),
+              },
+              inboundMode,
+            );
+            if (observed.effectiveMode && observed.effectiveMode !== inboundMode) {
+              this.logger.warn(
+                `Inbound inbox mode changed to ${observed.effectiveMode} during claim; refreshing cached mode`,
+              );
+              this.setInboundInboxMode(observed.effectiveMode);
+              activeInboundMode = observed.effectiveMode;
+            }
+            if (inboundClassification === 'protocol' && !observed.shouldDispatch) {
+              this.logger.info(
+                `Inbound ${observed.kind} protocol suppressed before edit sinks: ${inboundIdentity.instanceScope}/${inboundMessageId}`,
+              );
+              continue;
+            }
+          }
           if (
             received?.messageStubParameters?.some?.((param) =>
               [
@@ -1202,6 +1520,60 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           const messageRaw = this.prepareMessage(received);
+          let durableMessageRecordId: string | undefined;
+
+          if (inboundMode !== 'off' && inboundIdentity && inboundClassification === 'real') {
+            const messageData = { ...messageRaw };
+            delete messageData.pollUpdates;
+            const leaseOwner = v4();
+            const claim = await this.inboundInbox.claim(
+              {
+                ...inboundIdentity,
+                instanceId: this.instanceId,
+                contactScope: inboundContactScope,
+                classification: inboundClassification,
+                payloadHash: inboundPayloadHash(received),
+                messageData,
+                leaseOwner,
+                leaseSeconds: inboundConfig.LEASE_SECONDS,
+              },
+              inboundMode,
+            );
+            if (claim.effectiveMode && claim.effectiveMode !== inboundMode) {
+              this.logger.warn(
+                `Inbound inbox mode changed to ${claim.effectiveMode} during claim; continuing without enforce for ${inboundMessageId}`,
+              );
+              this.setInboundInboxMode(claim.effectiveMode);
+              activeInboundMode = claim.effectiveMode;
+            }
+            durableMessageRecordId = claim.messageRecordId;
+            if (claim.leaseToken) {
+              activeReceipt = {
+                id: claim.receiptId,
+                leaseOwner,
+                leaseToken: claim.leaseToken,
+                mode: inboundMode,
+              };
+              heartbeatTimer = setInterval(
+                () => {
+                  void this.inboundInbox
+                    .heartbeat(claim.receiptId, leaseOwner, claim.leaseToken!, inboundConfig.LEASE_SECONDS)
+                    .then((renewed) => {
+                      if (!renewed) this.logger.error(`Inbound lease fencing lost for receipt ${claim.receiptId}`);
+                    })
+                    .catch((error) => this.logger.error(`Inbound lease heartbeat failed: ${error}`));
+                },
+                Math.max(1000, Math.floor((inboundConfig.LEASE_SECONDS * 1000) / 3)),
+              );
+              heartbeatTimer.unref();
+            }
+            if (!claim.shouldDispatch) {
+              this.logger.info(
+                `Inbound ${claim.kind}${claim.payloadHashMismatch ? ' (payload variant)' : ''} suppressed before sinks: ${inboundIdentity.instanceScope}/${inboundMessageId}`,
+              );
+              continue;
+            }
+          }
 
           if (messageRaw.messageType === 'pollUpdateMessage') {
             const pollCreationKey = messageRaw.message.pollUpdateMessage.pollCreationMessageKey;
@@ -1323,22 +1695,59 @@ export class BaileysStartupService extends ChannelStartupService {
             await this.client.readMessages([received.key]);
           }
 
+          // Persist every deterministic enrichment before the first external
+          // sink. A recovered Chatwoot attempt must see the same poll payload
+          // as the original attempt, not the pre-enrichment claim snapshot.
+          if (activeReceipt) await this.persistActiveInboundMessage(activeReceipt, messageRaw);
+
+          const attemptActiveSink = async (
+            sink: 'webhook' | 'chatwoot' | 'chatbot',
+            operation: () => Promise<'sent' | 'skipped'>,
+          ) => {
+            activeSink = sink;
+            try {
+              if (!activeReceipt) {
+                await operation();
+                return true;
+              }
+              const failure = await attemptDurableInboundSink({
+                sink,
+                operation,
+                mark: (markedSink, state) => this.markActiveInboundSink(activeReceipt!, markedSink, state, messageRaw),
+                onDeliveryFailure: ({ error }) =>
+                  this.logger.error(`Inbound ${sink} failed for ${activeReceipt!.id}: ${error.message}`),
+              });
+              if (failure) {
+                activeSinkFailures.push(failure);
+                return false;
+              }
+              return true;
+            } finally {
+              activeSink = undefined;
+            }
+          };
+
           if (
             this.configService.get<Chatwoot>('CHATWOOT').ENABLED &&
             this.localChatwoot?.enabled &&
             !received.key.id.includes('@broadcast')
           ) {
-            const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
-              Events.MESSAGES_UPSERT,
-              { instanceName: this.instance.name, instanceId: this.instanceId },
-              messageRaw,
-            );
+            await attemptActiveSink('chatwoot', async () => {
+              const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
+                Events.MESSAGES_UPSERT,
+                { instanceName: this.instance.name, instanceId: this.instanceId },
+                messageRaw,
+              );
 
-            if (chatwootSentMessage?.id) {
-              messageRaw.chatwootMessageId = chatwootSentMessage.id;
-              messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
-              messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
-            }
+              if (chatwootSentMessage?.id) {
+                messageRaw.chatwootMessageId = chatwootSentMessage.id;
+                messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
+                messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
+              }
+              return 'sent';
+            });
+          } else if (activeReceipt) {
+            await this.markActiveInboundSink(activeReceipt, 'chatwoot', 'skipped', messageRaw);
           }
 
           if (this.configService.get<Openai>('OPENAI').ENABLED && received?.message?.audioMessage) {
@@ -1355,7 +1764,9 @@ export class BaileysStartupService extends ChannelStartupService {
           if (this.configService.get<Database>('DATABASE').SAVE_DATA.NEW_MESSAGE) {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { pollUpdates, ...messageData } = messageRaw;
-            const msg = await this.prismaRepository.message.create({ data: messageData });
+            const msg = durableMessageRecordId
+              ? await this.prismaRepository.message.findUniqueOrThrow({ where: { id: durableMessageRecordId } })
+              : await this.prismaRepository.message.create({ data: messageData });
 
             const { remoteJid } = received.key;
             const timestamp = msg.messageTimestamp;
@@ -1389,50 +1800,49 @@ export class BaileysStartupService extends ChannelStartupService {
                 try {
                   if (isVideo && !this.configService.get<S3>('S3').SAVE_VIDEO) {
                     this.logger.warn('Video upload is disabled. Skipping video upload.');
-                    // Skip video upload by returning early from this block
-                    return;
-                  }
-
-                  const message: any = received;
-
-                  // Verificação adicional para garantir que há conteúdo de mídia real
-                  const hasRealMedia = this.hasValidMediaContent(message);
-
-                  if (!hasRealMedia) {
-                    this.logger.warn('Message detected as media but contains no valid media content');
                   } else {
-                    const media = await this.getBase64FromMediaMessage({ message }, true);
+                    const message: any = received;
 
-                    if (!media) {
-                      this.logger.verbose('No valid media to upload (messageContextInfo only), skipping MinIO');
-                      return;
+                    // Verificação adicional para garantir que há conteúdo de mídia real
+                    const hasRealMedia = this.hasValidMediaContent(message);
+
+                    if (!hasRealMedia) {
+                      this.logger.warn('Message detected as media but contains no valid media content');
+                    } else {
+                      const media = await this.getBase64FromMediaMessage({ message }, true);
+
+                      if (!media) {
+                        this.logger.verbose('No valid media to upload (messageContextInfo only), skipping MinIO');
+                      } else {
+                        const { buffer, mediaType, fileName, size } = media;
+                        const mimetype = mimeTypes.lookup(fileName).toString();
+                        const fullName = join(
+                          `${this.instance.id}`,
+                          received.key.remoteJid,
+                          mediaType,
+                          `${Date.now()}_${fileName}`,
+                        );
+                        await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, {
+                          'Content-Type': mimetype,
+                        });
+
+                        await this.prismaRepository.media.create({
+                          data: {
+                            messageId: msg.id,
+                            instanceId: this.instanceId,
+                            type: mediaType,
+                            fileName: fullName,
+                            mimetype,
+                          },
+                        });
+
+                        const mediaUrl = await s3Service.getObjectUrl(fullName);
+
+                        messageRaw.message.mediaUrl = mediaUrl;
+
+                        await this.prismaRepository.message.update({ where: { id: msg.id }, data: messageRaw });
+                      }
                     }
-
-                    const { buffer, mediaType, fileName, size } = media;
-                    const mimetype = mimeTypes.lookup(fileName).toString();
-                    const fullName = join(
-                      `${this.instance.id}`,
-                      received.key.remoteJid,
-                      mediaType,
-                      `${Date.now()}_${fileName}`,
-                    );
-                    await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, { 'Content-Type': mimetype });
-
-                    await this.prismaRepository.media.create({
-                      data: {
-                        messageId: msg.id,
-                        instanceId: this.instanceId,
-                        type: mediaType,
-                        fileName: fullName,
-                        mimetype,
-                      },
-                    });
-
-                    const mediaUrl = await s3Service.getObjectUrl(fullName);
-
-                    messageRaw.message.mediaUrl = mediaUrl;
-
-                    await this.prismaRepository.message.update({ where: { id: msg.id }, data: messageRaw });
                   }
                 } catch (error) {
                   this.logger.error(['Error on upload file to minio', error?.message, error?.stack]);
@@ -1480,14 +1890,32 @@ export class BaileysStartupService extends ChannelStartupService {
           }
           console.log(messageRaw);
 
-          this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
+          // Base64/media and PN/LID rewriting happen after Chatwoot. Snapshot
+          // them durably before webhook/n8n so any retry is payload-equivalent.
+          if (activeReceipt) await this.persistActiveInboundMessage(activeReceipt, messageRaw);
 
-          await chatbotController.emit({
-            instance: { instanceName: this.instance.name, instanceId: this.instanceId },
-            remoteJid: messageRaw.key.remoteJid,
-            msg: messageRaw,
-            pushName: messageRaw.pushName,
+          await attemptActiveSink('webhook', async () => {
+            await this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
+            return 'sent';
           });
+
+          const chatbotDelivered = await attemptActiveSink('chatbot', async () => {
+            await chatbotController.emitDurableInbound({
+              instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+              remoteJid: messageRaw.key.remoteJid,
+              msg: messageRaw,
+              pushName: messageRaw.pushName,
+            });
+            return 'sent';
+          });
+          if (chatbotDelivered) {
+            await chatbotController.emitBestEffortInbound({
+              instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+              remoteJid: messageRaw.key.remoteJid,
+              msg: messageRaw,
+              pushName: messageRaw.pushName,
+            });
+          }
 
           const contact = await this.prismaRepository.contact.findFirst({
             where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },
@@ -1506,6 +1934,12 @@ export class BaileysStartupService extends ChannelStartupService {
           };
 
           if (contactRaw.remoteJid === 'status@broadcast') {
+            if (activeReceipt) {
+              await this.settleActiveInbound(activeReceipt, activeSinkFailures, inboundConfig.MAX_ATTEMPTS);
+              if (heartbeatTimer) clearInterval(heartbeatTimer);
+              heartbeatTimer = undefined;
+              activeReceipt = undefined;
+            }
             continue;
           }
 
@@ -1538,6 +1972,12 @@ export class BaileysStartupService extends ChannelStartupService {
                 update: contactRaw,
               });
 
+            if (activeReceipt) {
+              await this.settleActiveInbound(activeReceipt, activeSinkFailures, inboundConfig.MAX_ATTEMPTS);
+              if (heartbeatTimer) clearInterval(heartbeatTimer);
+              heartbeatTimer = undefined;
+              activeReceipt = undefined;
+            }
             continue;
           }
 
@@ -1549,9 +1989,29 @@ export class BaileysStartupService extends ChannelStartupService {
               update: contactRaw,
               create: contactRaw,
             });
+          if (activeReceipt) {
+            await this.settleActiveInbound(activeReceipt, activeSinkFailures, inboundConfig.MAX_ATTEMPTS);
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
+            heartbeatTimer = undefined;
+            activeReceipt = undefined;
+          }
         }
       } catch (error) {
+        if (activeReceipt) {
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          if (activeSink) {
+            await this.markActiveInboundSink(activeReceipt, activeSink, 'failed');
+          }
+          await this.inboundInbox.markFailed(
+            activeReceipt.id,
+            activeReceipt.leaseOwner,
+            activeReceipt.leaseToken,
+            error,
+            this.configService.get<InboundInbox>('INBOUND_INBOX').MAX_ATTEMPTS,
+          );
+        }
         this.logger.error(error);
+        if (activeInboundMode === 'enforce') throw error;
       }
     },
 
@@ -1915,8 +2375,7 @@ export class BaileysStartupService extends ChannelStartupService {
             if (events['messages.upsert']) {
               const payload = events['messages.upsert'];
 
-              // this.messageProcessor.processMessage(payload, settings);
-              await this.messageHandle['messages.upsert'](payload, settings);
+              await this.messageProcessor.processMessage(payload, settings);
             }
 
             if (events['messages.update']) {
@@ -2828,8 +3287,9 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           const response = await axios.get(mediaMessage.media, config);
+          const responseContentType = response.headers['content-type'];
 
-          mimetype = response.headers['content-type'];
+          mimetype = typeof responseContentType === 'string' ? responseContentType : false;
         }
       }
 

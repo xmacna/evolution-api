@@ -1,5 +1,6 @@
 import { IgnoreJidDto } from '@api/dto/chatbot.dto';
 import { InstanceDto } from '@api/dto/instance.dto';
+import { resolveInboundMode } from '@api/integrations/channel/whatsapp/inboundInbox';
 import { PrismaRepository } from '@api/repository/repository.service';
 import { WAMonitoringService } from '@api/services/monitor.service';
 import { Events } from '@api/types/wa.types';
@@ -10,6 +11,24 @@ import { getConversationMessage } from '@utils/getConversationMessage';
 
 import { BaseChatbotDto } from './base-chatbot.dto';
 import { ChatbotController, ChatbotControllerInterface, EmitData } from './chatbot.controller';
+import {
+  buildChatbotDebounceKey,
+  ChatbotDebounceMetadata,
+  ChatbotDebounceStore,
+  normalizeMessageTimestamp,
+} from './chatbotDebounce';
+
+/**
+ * XMACNA_DEBOUNCE_DETACHED_518: os metadados do buffer viajam numa copia rasa da
+ * mensagem, nunca mutando o `messageRaw` que o inbox ja persistiu no recibo.
+ * O consumidor canonico e o payload do n8n (`n8n.service.ts`).
+ */
+export const CHATBOT_DEBOUNCE_METADATA_FIELD = 'debounceMetadata' as const;
+
+export function withChatbotDebounceMetadata<T>(msg: T, metadata: ChatbotDebounceMetadata): T {
+  if (!msg || typeof msg !== 'object') return msg;
+  return { ...(msg as Record<string, unknown>), [CHATBOT_DEBOUNCE_METADATA_FIELD]: metadata } as T;
+}
 
 // Common settings interface for all chatbot integrations
 export interface ChatbotSettings {
@@ -58,7 +77,7 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
   botRepository: any;
   settingsRepository: any;
   sessionRepository: any;
-  userMessageDebounce: { [key: string]: { message: string; timeoutId: NodeJS.Timeout } } = {};
+  userMessageDebounce: ChatbotDebounceStore = {};
 
   // Name of the integration, to be set by the derived class
   protected abstract readonly integrationName: string;
@@ -919,18 +938,31 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
 
       // Process with debounce if needed
       if (debounceTime && debounceTime > 0) {
-        this.processDebounce(this.userMessageDebounce, content, remoteJid, debounceTime, async (debouncedContent) => {
-          await this.processBot(
-            this.waMonitor.waInstances[instance.instanceName],
-            remoteJid,
-            findBot,
-            session,
-            mergedSettings,
-            debouncedContent,
-            msg?.pushName,
-            msg,
-          );
-        });
+        // XMACNA_DEBOUNCE_DETACHED_518: SEM `await`. A aceitacao no buffer e a
+        // entrega do sink `chatbot`; o flush roda destacado da fila serial da
+        // instancia. Aguardar aqui e o que impedia o agrupamento na rota
+        // Baileys e prendia a instancia por `debounceTime + workflow`.
+        // Erro do flush nao volta por aqui: sai pelo `onFlushError` do
+        // `processDebounce`.
+        this.processDebounce(
+          this.userMessageDebounce,
+          content,
+          buildChatbotDebounceKey(instance.instanceName, remoteJid),
+          debounceTime,
+          async (debouncedContent, debounceMetadata) => {
+            await this.processBot(
+              this.waMonitor.waInstances[instance.instanceName],
+              remoteJid,
+              findBot,
+              session,
+              mergedSettings,
+              debouncedContent,
+              msg?.pushName,
+              withChatbotDebounceMetadata(msg, debounceMetadata),
+            );
+          },
+          normalizeMessageTimestamp(msg?.messageTimestamp),
+        );
       } else {
         await this.processBot(
           this.waMonitor.waInstances[instance.instanceName],
@@ -944,7 +976,26 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
         );
       }
     } catch (error) {
+      // XMACNA_DEBOUNCE_DETACHED_518: com debounce ativo, este catch cobre so a
+      // resolucao do bot/sessao ate a ACEITACAO no buffer. A falha do POST ao
+      // n8n durante o flush destacado nao chega aqui e nao reabre o recibo.
       this.logger.error(error);
+      if (
+        this.shouldPropagateInboundFailure() &&
+        resolveInboundMode(this.waMonitor.waInstances[instance.instanceName]?.instance?.inboundInboxMode, 'off') ===
+          'enforce'
+      ) {
+        throw error;
+      }
     }
+  }
+
+  // The durable receipt tracks a single aggregate 'chatbot' sink. Propagating a
+  // transient failure from one integrator forces the reconciler to replay ALL
+  // of them — including an n8n POST that already delivered. Until the receipt
+  // gains per-integrator states, only the integrator whose delivery must be
+  // durable (n8n) may opt into propagation.
+  protected shouldPropagateInboundFailure(): boolean {
+    return false;
   }
 }

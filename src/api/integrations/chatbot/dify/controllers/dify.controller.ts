@@ -30,8 +30,6 @@ export class DifyController extends BaseChatbotController<DifyModel, DifyDto> {
   botRepository: any;
   settingsRepository: any;
   sessionRepository: any;
-  userMessageDebounce: { [key: string]: { message: string; timeoutId: NodeJS.Timeout } } = {};
-
   protected getFallbackBotId(settings: any): string | undefined {
     return settings?.fallbackId;
   }

@@ -32,8 +32,6 @@ export class TypebotController extends BaseChatbotController<TypebotModel, Typeb
   botRepository: any;
   settingsRepository: any;
   sessionRepository: any;
-  userMessageDebounce: { [key: string]: { message: string; timeoutId: NodeJS.Timeout } } = {};
-
   protected getFallbackBotId(settings: any): string | undefined {
     return settings?.typebotIdFallback;
   }
