@@ -163,6 +163,7 @@ import {
   resolveInboundMode,
 } from './inboundInbox';
 import { attemptDurableInboundSink, DurableInboundSinkFailure } from './inboundSinkDispatch';
+import { enrichOutgoingMessageKey, remoteJidQueryFilters } from './outgoingLid';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 
 export interface ExtendedIMessageKey extends proto.IMessageKey {
@@ -1520,6 +1521,25 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           const messageRaw = this.prepareMessage(received);
+          if (received.key.fromMe && received.key.remoteJid?.endsWith('@lid')) {
+            let cachedNumber: string | undefined;
+            let cachedJids: Awaited<ReturnType<typeof getOnWhatsappCache>> = [];
+            try {
+              cachedNumber = received.key.id
+                ? await this.baileysCache.get(`outgoing_number_${received.key.id}`)
+                : undefined;
+              cachedJids = await getOnWhatsappCache([received.key.remoteJid]);
+            } catch (error) {
+              this.logger.warn(`Outgoing LID number cache unavailable: ${error}`);
+            }
+            messageRaw.key = enrichOutgoingMessageKey(messageRaw.key, [
+              cachedNumber,
+              (received.key as ExtendedIMessageKey).remoteJidAlt,
+              (received.key as ExtendedIMessageKey & { senderPn?: string }).senderPn,
+              (received as WAMessage & { senderPn?: string }).senderPn,
+              ...cachedJids.flatMap((cached) => [cached.remoteJid, ...cached.jidOptions]),
+            ]);
+          }
           let durableMessageRecordId: string | undefined;
 
           if (inboundMode !== 'off' && inboundIdentity && inboundClassification === 'real') {
@@ -2882,6 +2902,24 @@ export class BaileysStartupService extends ChannelStartupService {
       }
 
       const messageRaw = this.prepareMessage(messageSent);
+      const requestedNumber = /^\d+@s\.whatsapp\.net$/.test(number) ? number : sender;
+      messageRaw.key = enrichOutgoingMessageKey(messageRaw.key, [
+        requestedNumber,
+        (messageSent.key as ExtendedIMessageKey).remoteJidAlt,
+        (messageSent.key as ExtendedIMessageKey & { senderPn?: string }).senderPn,
+        (messageSent as WAMessage & { senderPn?: string }).senderPn,
+      ]);
+      if (messageRaw.key.remoteJidAlt && messageRaw.key.id && messageRaw.key.remoteJid?.endsWith('@lid')) {
+        try {
+          await this.baileysCache.set(
+            `outgoing_number_${messageRaw.key.id}`,
+            messageRaw.key.remoteJidAlt,
+            this.MESSAGE_CACHE_TTL_SECONDS,
+          );
+        } catch (error) {
+          this.logger.warn(`Outgoing LID number cache unavailable: ${error}`);
+        }
+      }
 
       const isMedia =
         messageSent?.message?.imageMessage ||
@@ -5498,10 +5536,7 @@ export class BaileysStartupService extends ChannelStartupService {
           keyFilters?.fromMe ? { key: { path: ['fromMe'], equals: keyFilters?.fromMe } } : {},
           keyFilters?.participant ? { key: { path: ['participant'], equals: keyFilters?.participant } } : {},
           {
-            OR: [
-              keyFilters?.remoteJid ? { key: { path: ['remoteJid'], equals: keyFilters?.remoteJid } } : {},
-              keyFilters?.remoteJidAlt ? { key: { path: ['remoteJidAlt'], equals: keyFilters?.remoteJidAlt } } : {},
-            ],
+            OR: remoteJidQueryFilters(keyFilters),
           },
         ],
       },
@@ -5527,10 +5562,7 @@ export class BaileysStartupService extends ChannelStartupService {
           keyFilters?.fromMe ? { key: { path: ['fromMe'], equals: keyFilters?.fromMe } } : {},
           keyFilters?.participant ? { key: { path: ['participant'], equals: keyFilters?.participant } } : {},
           {
-            OR: [
-              keyFilters?.remoteJid ? { key: { path: ['remoteJid'], equals: keyFilters?.remoteJid } } : {},
-              keyFilters?.remoteJidAlt ? { key: { path: ['remoteJidAlt'], equals: keyFilters?.remoteJidAlt } } : {},
-            ],
+            OR: remoteJidQueryFilters(keyFilters),
           },
         ],
       },
