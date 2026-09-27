@@ -47,6 +47,11 @@ export class PrismaLidPhoneAliasStore implements LidPhoneAliasStore {
               return tx.lidPhoneAlias.create({ data: { instanceScope, lidJid, phoneJid } });
             }
             if (existing.ambiguous || existing.phoneJid !== phoneJid) {
+              if (!existing.ambiguous && existing.phoneJid !== phoneJid) {
+                console.warn(
+                  `Inbound LID alias conflict scope=${instanceScope} lid=${lidJid} stored=${existing.phoneJid} observed=${phoneJid}`,
+                );
+              }
               return tx.lidPhoneAlias.update({
                 where,
                 data: { ambiguous: true, phoneJid: null },

@@ -74,9 +74,9 @@ test('durable n8n delivery is isolated from best-effort chatbot effects', async 
   assert.deepEqual(failures, ['dify:dify unavailable']);
 
   const serviceSource = readFileSync('src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts', 'utf8');
-  assert.match(serviceSource, /attempt\('chatbot'[\s\S]{0,500}emitDurableInbound/);
+  assert.match(serviceSource, /attempt\('chatbot'[\s\S]{0,1000}emitDurableInbound/);
   assert.match(serviceSource, /recoveredChatbot === 'succeeded'[\s\S]{0,300}emitBestEffortInbound/);
-  assert.match(serviceSource, /attemptActiveSink\('chatbot'[\s\S]{0,500}emitDurableInbound/);
+  assert.match(serviceSource, /attemptActiveSink\('chatbot'[\s\S]{0,1000}emitDurableInbound/);
   assert.match(serviceSource, /if \(chatbotDelivered\)[\s\S]{0,300}emitBestEffortInbound/);
 });
 
