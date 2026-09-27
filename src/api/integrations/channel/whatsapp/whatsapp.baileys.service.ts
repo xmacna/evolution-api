@@ -154,6 +154,7 @@ import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
 import { BaileysMessageProcessor } from './baileysMessage.processor';
+import { PrismaLidPhoneAliasStore, resolveInboundAddress } from './inboundIdentity';
 import {
   classifyInboundMessage,
   inboundPayloadHash,
@@ -243,6 +244,7 @@ const xmacnaConnectStates: Map<string, XmacnaConnectState> =
 export class BaileysStartupService extends ChannelStartupService {
   private messageProcessor = new BaileysMessageProcessor();
   private readonly inboundInbox: PrismaInboundInbox;
+  private readonly lidPhoneAliases: PrismaLidPhoneAliasStore;
   private inboundWorkerTimer?: NodeJS.Timeout;
   private inboundWorkerRunning = false;
   private readonly inboundWorkerOwner = `baileys-${v4()}`;
@@ -262,6 +264,7 @@ export class BaileysStartupService extends ChannelStartupService {
       onMessageReceive: this.messageHandle['messages.upsert'].bind(this), // Bind the method to the current context
     });
     this.inboundInbox = new PrismaInboundInbox(this.prismaRepository);
+    this.lidPhoneAliases = new PrismaLidPhoneAliasStore(this.prismaRepository);
 
     this.authStateProvider = new AuthStateProvider(this.providerFiles);
   }
@@ -921,6 +924,18 @@ export class BaileysStartupService extends ChannelStartupService {
         return 'sent';
       });
 
+      const recoveredAddress = await resolveInboundAddress(
+        this.instance.name,
+        messageRaw.key,
+        this.lidPhoneAliases,
+        (lid) => this.client.signalRepository.lidMapping.getPNForLID(lid),
+      );
+      if (recoveredAddress.senderLid) {
+        messageRaw.key.senderLid = recoveredAddress.senderLid;
+        messageRaw.key.remoteJidAlt = recoveredAddress.remoteJid;
+      }
+      messageRaw.key.remoteJid = recoveredAddress.remoteJid;
+
       const recoveredChatbot = await attempt('chatbot', item.chatbotState, async () => {
         await chatbotController.emitDurableInbound({
           instance: { instanceName: this.instance.name, instanceId: this.instanceId },
@@ -1368,7 +1383,7 @@ export class BaileysStartupService extends ChannelStartupService {
           activeInboundMode = inboundMode;
           const inboundClassification = classifyInboundMessage(received);
           const inboundMessageId = received.key?.id;
-          const inboundContactScope = normalizeContactScope(
+          let inboundContactScope = normalizeContactScope(
             (received.key as any)?.remoteJidAlt || received.key?.remoteJid,
           );
           const inboundIdentity = inboundMessageId
@@ -1539,6 +1554,19 @@ export class BaileysStartupService extends ChannelStartupService {
               (received as WAMessage & { senderPn?: string }).senderPn,
               ...cachedJids.flatMap((cached) => [cached.remoteJid, ...cached.jidOptions]),
             ]);
+          }
+          if (!received.key.fromMe) {
+            const resolvedAddress = await resolveInboundAddress(
+              this.instance.name,
+              messageRaw.key,
+              this.lidPhoneAliases,
+              (lid) => this.client.signalRepository.lidMapping.getPNForLID(lid),
+            );
+            inboundContactScope = normalizeContactScope(resolvedAddress.remoteJid);
+            if (resolvedAddress.senderLid) {
+              messageRaw.key.senderLid = resolvedAddress.senderLid;
+              messageRaw.key.remoteJidAlt = resolvedAddress.remoteJid;
+            }
           }
           let durableMessageRecordId: string | undefined;
 
