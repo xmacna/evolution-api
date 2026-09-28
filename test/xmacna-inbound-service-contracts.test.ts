@@ -76,8 +76,8 @@ test('durable n8n delivery is isolated from best-effort chatbot effects', async 
   const serviceSource = readFileSync('src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts', 'utf8');
   assert.match(serviceSource, /attempt\('chatbot'[\s\S]{0,1000}emitDurableInbound/);
   assert.match(serviceSource, /recoveredChatbot === 'succeeded'[\s\S]{0,300}emitBestEffortInbound/);
-  assert.match(serviceSource, /attemptActiveSink\('chatbot'[\s\S]{0,1000}emitDurableInbound/);
-  assert.match(serviceSource, /if \(chatbotDelivered\)[\s\S]{0,300}emitBestEffortInbound/);
+  assert.match(serviceSource, /dispatchInboundChatbot\(\{[\s\S]{0,500}attemptActiveSink\('chatbot'[\s\S]{0,500}emitDurableInbound/);
+  assert.match(serviceSource, /dispatchInboundChatbot\(\{[\s\S]{0,1200}emitBestEffortInbound/);
 });
 
 test('Chatwoot edit revisions have stable identities distinct from the original WAID', () => {

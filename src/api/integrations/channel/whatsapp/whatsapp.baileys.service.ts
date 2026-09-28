@@ -163,7 +163,7 @@ import {
   PrismaInboundInbox,
   resolveInboundMode,
 } from './inboundInbox';
-import { attemptDurableInboundSink, DurableInboundSinkFailure } from './inboundSinkDispatch';
+import { attemptDurableInboundSink, dispatchInboundChatbot, DurableInboundSinkFailure } from './inboundSinkDispatch';
 import { enrichOutgoingMessageKey, remoteJidQueryFilters } from './outgoingLid';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 
@@ -1573,7 +1573,12 @@ export class BaileysStartupService extends ChannelStartupService {
               unresolvedInboundLid = error;
               inboundContactScope = normalizeContactScope(messageRaw.key.remoteJid);
               this.logger.warn(
-                `Inbound chatbot identity unresolved for ${this.instance.name}/${inboundMessageId}: ${error.message}`,
+                JSON.stringify({
+                  event: 'unresolved_inbound_lid',
+                  instance: this.instance.name,
+                  inboxMode: inboundMode,
+                  reason: error.message,
+                }),
               );
             }
           }
@@ -1956,27 +1961,25 @@ export class BaileysStartupService extends ChannelStartupService {
             return 'sent';
           });
 
-          const chatbotDelivered =
-            unresolvedInboundLid && !activeReceipt
-              ? false
-              : await attemptActiveSink('chatbot', async () => {
-                  if (unresolvedInboundLid) throw unresolvedInboundLid;
-                  await chatbotController.emitDurableInbound({
-                    instance: { instanceName: this.instance.name, instanceId: this.instanceId },
-                    remoteJid: messageRaw.key.remoteJid,
-                    msg: messageRaw,
-                    pushName: messageRaw.pushName,
-                  });
-                  return 'sent';
-                });
-          if (chatbotDelivered) {
-            await chatbotController.emitBestEffortInbound({
-              instance: { instanceName: this.instance.name, instanceId: this.instanceId },
-              remoteJid: messageRaw.key.remoteJid,
-              msg: messageRaw,
-              pushName: messageRaw.pushName,
-            });
-          }
+          await dispatchInboundChatbot({
+            unresolvedLid: unresolvedInboundLid,
+            receiptMode: activeReceipt ? activeInboundMode : undefined,
+            attempt: (operation) => attemptActiveSink('chatbot', operation),
+            durable: () =>
+              chatbotController.emitDurableInbound({
+                instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+                remoteJid: messageRaw.key.remoteJid,
+                msg: messageRaw,
+                pushName: messageRaw.pushName,
+              }),
+            bestEffort: () =>
+              chatbotController.emitBestEffortInbound({
+                instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+                remoteJid: messageRaw.key.remoteJid,
+                msg: messageRaw,
+                pushName: messageRaw.pushName,
+              }),
+          });
 
           const contact = await this.prismaRepository.contact.findFirst({
             where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },
