@@ -1,4 +1,27 @@
+import { MessageSubtype } from '@api/types/wa.types';
+
 type MediaUploadContext = { instance: string; messageId: string };
+
+/**
+ * Own-key copy of a received message for `getBase64FromMediaMessage`. Its
+ * `'messageContextInfo' in msg.message` guard is true through the prototype of a
+ * raw Baileys protobuf, so media without its own `messageContextInfo` (whatsmeow
+ * clients, or the inner message of a wrapper such as `documentWithCaptionMessage`)
+ * was dropped before the S3 upload (MAR-304). The send path already passes a plain
+ * object built by `prepareMessage`, so the shared guard stays unchanged. `received`
+ * itself is not mutated; media fields are shared by reference, as in the Chatwoot path.
+ */
+export function ownKeyMediaMessage<T extends { message?: any }>(received: T): T {
+  const copy = (message: any) => {
+    if (!message) return message;
+    const own = { ...message };
+    for (const subtype of MessageSubtype) {
+      if (own[subtype]?.message) own[subtype] = { ...own[subtype], message: copy(own[subtype].message) };
+    }
+    return own;
+  };
+  return { ...received, message: copy(received.message) };
+}
 type MediaUploadLogger = { warn: (message: string) => void };
 
 /** Keep media failures visible without logging message bodies, URLs, or media keys. */

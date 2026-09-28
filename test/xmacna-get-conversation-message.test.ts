@@ -5,11 +5,12 @@ process.env.S3_ENABLED = 'true';
 
 const conversationMessage = import('../src/utils/getConversationMessage');
 
-test('audio without mediaUrl carries an explicit unavailable marker', async () => {
+// MAR-304: the `media_unavailable` marker waits until the n8n missing-audio fallback
+// covers the fleet; until then the webhook keeps the legacy `|undefined` format.
+test('audio without mediaUrl keeps the legacy wire format', async () => {
   const { getConversationMessage } = await conversationMessage;
   const content = getConversationMessage({ key: { id: 'local-message' }, message: { audioMessage: {} } });
-  assert.equal(content, 'audioMessage|media_unavailable');
-  assert.equal(content.includes('|undefined'), false);
+  assert.equal(content, 'audioMessage|undefined');
 });
 
 test('audio with mediaUrl preserves the existing wire format', async () => {

@@ -163,7 +163,7 @@ import {
   PrismaInboundInbox,
   resolveInboundMode,
 } from './inboundInbox';
-import { runInboundMediaUpload } from './inboundMediaUpload';
+import { ownKeyMediaMessage, runInboundMediaUpload } from './inboundMediaUpload';
 import { attemptDurableInboundSink, dispatchInboundChatbot, DurableInboundSinkFailure } from './inboundSinkDispatch';
 import { enrichOutgoingMessageKey, remoteJidQueryFilters } from './outgoingLid';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
@@ -1884,7 +1884,8 @@ export class BaileysStartupService extends ChannelStartupService {
                         { instance: this.instance.name, messageId: received.key.id },
                         this.logger,
                         {
-                          download: () => this.getBase64FromMediaMessage({ message }, true),
+                          download: () =>
+                            this.getBase64FromMediaMessage({ message: ownKeyMediaMessage(message) }, true),
                           upload: async (media) => {
                             const { buffer, mediaType, fileName, size } = media;
                             const mimetype = mimeTypes.lookup(fileName).toString();
