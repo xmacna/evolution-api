@@ -12,6 +12,8 @@ const getTypeMessage = (msg: any) => {
     mediaId = msg.message?.mediaUrl;
   else mediaId = msg.key?.id;
 
+  const mediaReference = (type: string) => `${type}|${mediaId || 'media_unavailable'}`;
+
   const types = {
     conversation: msg?.message?.conversation,
     extendedTextMessage: msg?.message?.extendedTextMessage?.text,
@@ -29,21 +31,21 @@ const getTypeMessage = (msg: any) => {
     audioMessage: msg?.message?.speechToText
       ? msg?.message?.speechToText
       : msg?.message?.audioMessage
-        ? `audioMessage|${mediaId}`
+        ? mediaReference('audioMessage')
         : undefined,
     imageMessage: msg?.message?.imageMessage
-      ? `imageMessage|${mediaId}${msg?.message?.imageMessage?.caption ? `|${msg?.message?.imageMessage?.caption}` : ''}`
+      ? `${mediaReference('imageMessage')}${msg?.message?.imageMessage?.caption ? `|${msg?.message?.imageMessage?.caption}` : ''}`
       : undefined,
     videoMessage: msg?.message?.videoMessage
-      ? `videoMessage|${mediaId}${msg?.message?.videoMessage?.caption ? `|${msg?.message?.videoMessage?.caption}` : ''}`
+      ? `${mediaReference('videoMessage')}${msg?.message?.videoMessage?.caption ? `|${msg?.message?.videoMessage?.caption}` : ''}`
       : undefined,
     documentMessage: msg?.message?.documentMessage
-      ? `documentMessage|${mediaId}${
+      ? `${mediaReference('documentMessage')}${
           msg?.message?.documentMessage?.caption ? `|${msg?.message?.documentMessage?.caption}` : ''
         }`
       : undefined,
     documentWithCaptionMessage: msg?.message?.documentWithCaptionMessage?.message?.documentMessage
-      ? `documentWithCaptionMessage|${mediaId}${
+      ? `${mediaReference('documentWithCaptionMessage')}${
           msg?.message?.documentWithCaptionMessage?.message?.documentMessage?.caption
             ? `|${msg?.message?.documentWithCaptionMessage?.message?.documentMessage?.caption}`
             : ''

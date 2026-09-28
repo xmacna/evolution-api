@@ -163,6 +163,7 @@ import {
   PrismaInboundInbox,
   resolveInboundMode,
 } from './inboundInbox';
+import { runInboundMediaUpload } from './inboundMediaUpload';
 import { attemptDurableInboundSink, dispatchInboundChatbot, DurableInboundSinkFailure } from './inboundSinkDispatch';
 import { enrichOutgoingMessageKey, remoteJidQueryFilters } from './outgoingLid';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
@@ -1869,45 +1870,65 @@ export class BaileysStartupService extends ChannelStartupService {
                     const hasRealMedia = this.hasValidMediaContent(message);
 
                     if (!hasRealMedia) {
-                      this.logger.warn('Message detected as media but contains no valid media content');
+                      this.logger.warn(
+                        JSON.stringify({
+                          event: 'inbound_media_upload_skipped',
+                          instance: this.instance.name,
+                          messageId: received.key.id,
+                          stage: 'media_validation',
+                          reason: 'invalid_media',
+                        }),
+                      );
                     } else {
-                      const media = await this.getBase64FromMediaMessage({ message }, true);
-
-                      if (!media) {
-                        this.logger.verbose('No valid media to upload (messageContextInfo only), skipping MinIO');
-                      } else {
-                        const { buffer, mediaType, fileName, size } = media;
-                        const mimetype = mimeTypes.lookup(fileName).toString();
-                        const fullName = join(
-                          `${this.instance.id}`,
-                          received.key.remoteJid,
-                          mediaType,
-                          `${Date.now()}_${fileName}`,
-                        );
-                        await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, {
-                          'Content-Type': mimetype,
-                        });
-
-                        await this.prismaRepository.media.create({
-                          data: {
-                            messageId: msg.id,
-                            instanceId: this.instanceId,
-                            type: mediaType,
-                            fileName: fullName,
-                            mimetype,
+                      await runInboundMediaUpload(
+                        { instance: this.instance.name, messageId: received.key.id },
+                        this.logger,
+                        {
+                          download: () => this.getBase64FromMediaMessage({ message }, true),
+                          upload: async (media) => {
+                            const { buffer, mediaType, fileName, size } = media;
+                            const mimetype = mimeTypes.lookup(fileName).toString();
+                            const fullName = join(
+                              `${this.instance.id}`,
+                              received.key.remoteJid,
+                              mediaType,
+                              `${Date.now()}_${fileName}`,
+                            );
+                            const result = await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, {
+                              'Content-Type': mimetype,
+                            });
+                            return result instanceof Error ? result : { fullName, mediaType, mimetype };
                           },
-                        });
-
-                        const mediaUrl = await s3Service.getObjectUrl(fullName);
-
-                        messageRaw.message.mediaUrl = mediaUrl;
-
-                        await this.prismaRepository.message.update({ where: { id: msg.id }, data: messageRaw });
-                      }
+                          createMedia: async (_media, { fullName, mediaType, mimetype }) => {
+                            await this.prismaRepository.media.create({
+                              data: {
+                                messageId: msg.id,
+                                instanceId: this.instanceId,
+                                type: mediaType,
+                                fileName: fullName,
+                                mimetype,
+                              },
+                            });
+                          },
+                          updateMessage: async (_media, { fullName }) => {
+                            const mediaUrl = await s3Service.getObjectUrl(fullName);
+                            messageRaw.message.mediaUrl = mediaUrl;
+                            await this.prismaRepository.message.update({ where: { id: msg.id }, data: messageRaw });
+                          },
+                        },
+                      );
                     }
                   }
                 } catch (error) {
-                  this.logger.error(['Error on upload file to minio', error?.message, error?.stack]);
+                  this.logger.warn(
+                    JSON.stringify({
+                      event: 'inbound_media_upload_failed',
+                      instance: this.instance.name,
+                      messageId: received.key.id,
+                      stage: 'pre_upload',
+                      errorType: error instanceof Error ? error.name : typeof error,
+                    }),
+                  );
                 }
               }
             }
