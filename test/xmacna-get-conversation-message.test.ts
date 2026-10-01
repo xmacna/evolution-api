@@ -21,3 +21,34 @@ test('audio with mediaUrl preserves the existing wire format', async () => {
   });
   assert.equal(content, 'audioMessage|https://local.invalid/audio.ogg');
 });
+
+// xmacna/elysium#696: an unmapped message used to come back as the literal 'unknown' (the
+// `messageType` metadata leaking as content) and the n8n bot answered it as if the lead typed it.
+test('unmapped messages have no content instead of the literal unknown', async () => {
+  const { getConversationMessage, hasConversationContent } = await conversationMessage;
+  const unmapped = [
+    { reactionMessage: { key: { id: 'BOT-MSG' }, text: '👍' } },
+    { stickerMessage: { mimetype: 'image/webp' } },
+    { pollUpdateMessage: { pollCreationMessageKey: { id: 'POLL' } } },
+    {},
+  ];
+  for (const message of unmapped) {
+    const content = getConversationMessage({ key: { id: 'local-message' }, message });
+    assert.equal(content, undefined, JSON.stringify(Object.keys(message)));
+    assert.equal(hasConversationContent(content), false);
+  }
+});
+
+test('text, emoji typed as text and ad-only messages keep their content', async () => {
+  const { getConversationMessage, hasConversationContent } = await conversationMessage;
+  const cases: Array<[any, string]> = [
+    [{ key: { id: 'a' }, message: { conversation: '👍' } }, '👍'],
+    [{ key: { id: 'b' }, message: { extendedTextMessage: { text: 'ok, pode ser' } } }, 'ok, pode ser'],
+    [{ key: { id: 'c' }, message: {}, contextInfo: { externalAdReply: { body: 'Anúncio' } } }, 'externalAdReplyBody|Anúncio'],
+  ];
+  for (const [msg, expected] of cases) {
+    const content = getConversationMessage(msg);
+    assert.equal(content, expected);
+    assert.equal(hasConversationContent(content), true);
+  }
+});

@@ -60,7 +60,12 @@ const getTypeMessage = (msg: any) => {
 };
 
 const getMessageContent = (types: any) => {
-  const typeKey = Object.keys(types).find((key) => key !== 'externalAdReplyBody' && types[key] !== undefined);
+  // XMACNA_CONTENTLESS_696: `messageType` is metadata, not content. Without this exclusion an unmapped
+  // message (reaction, sticker, poll...) resolved to the literal 'unknown' and reached the chatbot as
+  // if the lead had typed it (xmacna/elysium#696).
+  const typeKey = Object.keys(types).find(
+    (key) => key !== 'externalAdReplyBody' && key !== 'messageType' && types[key] !== undefined,
+  );
 
   let result = typeKey ? types[typeKey] : undefined;
 
@@ -78,3 +83,7 @@ export const getConversationMessage = (msg: any) => {
 
   return messageContent;
 };
+
+/** XMACNA_CONTENTLESS_696: true only when the chatbot has something the lead actually sent. */
+export const hasConversationContent = (content: unknown): content is string =>
+  typeof content === 'string' && content.length > 0;
