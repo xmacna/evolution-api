@@ -7,7 +7,7 @@ import { Events } from '@api/types/wa.types';
 import { Logger } from '@config/logger.config';
 import { BadRequestException } from '@exceptions';
 import { TriggerOperator, TriggerType } from '@prisma/client';
-import { getConversationMessage } from '@utils/getConversationMessage';
+import { getConversationMessage, hasConversationContent } from '@utils/getConversationMessage';
 
 import { BaseChatbotDto } from './base-chatbot.dto';
 import { ChatbotController, ChatbotControllerInterface, EmitData } from './chatbot.controller';
@@ -820,11 +820,17 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
 
       const content = getConversationMessage(msg);
 
+      // XMACNA_CONTENTLESS_696: a lead event with no content (reaction, sticker, poll...) is not a turn.
+      // It used to reach the bot as the literal 'unknown' (xmacna/elysium#696). A contentless message
+      // from me still goes on to the stopBotFromMe pause below, as before.
+      const hasContent = hasConversationContent(content);
+      if (!hasContent && !msg?.key?.fromMe) return;
+
       // Get integration type
       // const integrationType = this.getIntegrationType();
 
       // Find a bot for this message
-      let findBot: any = await this.findBotTrigger(this.botRepository, content, instance, session);
+      let findBot: any = await this.findBotTrigger(this.botRepository, content ?? '', instance, session);
 
       // If no bot is found, try to use fallback
       if (!findBot) {
@@ -919,6 +925,9 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
       if (session && session.status === 'closed') {
         return;
       }
+
+      // XMACNA_CONTENTLESS_696: past the fromMe handling, nothing without content goes to the bot.
+      if (!hasContent) return;
 
       // Merged settings
       const mergedSettings = {
