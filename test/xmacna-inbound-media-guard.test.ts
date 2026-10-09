@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { proto } from 'baileys';
 
-import { ownKeyMediaMessage } from '../src/api/integrations/channel/whatsapp/inboundMediaUpload';
+import { ownKeyMediaMessage, unwrapInboundMediaContent } from '../src/api/integrations/channel/whatsapp/inboundMediaUpload';
 import { BaileysStartupService } from '../src/api/integrations/channel/whatsapp/whatsapp.baileys.service';
 
 // MAR-304: received media is a raw Baileys protobuf. getBase64FromMediaMessage skips it
@@ -26,6 +26,8 @@ const audio = {
   fileEncSha256: bytes(),
 };
 const document = { ...audio, mimetype: 'application/pdf', fileName: 'local.pdf', caption: 'local', ptt: undefined };
+const video = { ...audio, mimetype: 'video/mp4', fileName: 'local.mp4', seconds: 5, ptt: undefined };
+const image = { ...audio, mimetype: 'image/jpeg', fileName: 'local.jpg', ptt: undefined };
 const contextInfo = { messageSecret: bytes() };
 
 const decode = (message: object) =>
@@ -121,4 +123,46 @@ test('send path shape (prepareMessage output) already passes the guard without t
   armMediaKey(messageRaw.message.audioMessage);
 
   assert.equal((await getBase64(messageRaw)).outcome, 'past_guard');
+});
+
+// MAR-414: view-once/ephemeral media arrives wrapped, so the top-level isMedia/isVideo
+// guards skipped the S3 block entirely. unwrapInboundMediaContent must expose the inner
+// media (and videoMessage specifically) without mutating the persisted envelope.
+test('viewOnceMessageV2 video: the unwrapped content is the inner videoMessage (media+video true)', () => {
+  const message = decode({ viewOnceMessageV2: { message: { videoMessage: video } } });
+
+  const content = unwrapInboundMediaContent(message);
+  assert.ok(content.videoMessage);
+  assert.equal(content.videoMessage, message.viewOnceMessageV2.message.videoMessage);
+  assert.equal(message.viewOnceMessageV2.message.videoMessage.mimetype, 'video/mp4');
+});
+
+test('viewOnceMessage video and ephemeral image unwrap through their envelopes', () => {
+  const viewOnce = decode({ viewOnceMessage: { message: { videoMessage: video } } });
+  const ephemeral = decode({ ephemeralMessage: { message: { imageMessage: image } } });
+
+  assert.ok(unwrapInboundMediaContent(viewOnce).videoMessage);
+  assert.ok(unwrapInboundMediaContent(ephemeral).imageMessage);
+});
+
+test('viewOnceMessageV2Extension video unwraps (extended variant, MAR-414)', () => {
+  const message = decode({ viewOnceMessageV2Extension: { message: { videoMessage: video } } });
+
+  assert.ok(unwrapInboundMediaContent(message).videoMessage);
+});
+
+test('plain and nested envelopes unwrap recursively to the innermost media', () => {
+  const plain = decode({ videoMessage: video });
+  const nested = decode({ ephemeralMessage: { message: { viewOnceMessageV2: { message: { videoMessage: video } } } } });
+
+  assert.ok(unwrapInboundMediaContent(plain).videoMessage);
+  assert.ok(unwrapInboundMediaContent(nested).videoMessage);
+});
+
+test('envelope without media keeps detection false and does not change the envelope', () => {
+  const message = decode({ viewOnceMessageV2: { message: { extendedTextMessage: { text: 'local' } } } });
+  const content = unwrapInboundMediaContent(message);
+
+  assert.ok(!(content.imageMessage || content.videoMessage || content.audioMessage || content.documentMessage));
+  assert.deepEqual(Object.keys(message), ['viewOnceMessageV2']);
 });
