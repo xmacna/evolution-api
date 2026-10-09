@@ -2,6 +2,29 @@ import { MessageSubtype } from '@api/types/wa.types';
 
 type MediaUploadContext = { instance: string; messageId: string };
 
+const MEDIA_WRAPPERS = [
+  'viewOnceMessage',
+  'viewOnceMessageV2',
+  'viewOnceMessageV2Extension',
+  'ephemeralMessage',
+] as const;
+
+/**
+ * Unwraps the inbound media envelope (view-once/ephemeral) for guard checks.
+ * Baileys delivers such media as `{ viewOnceMessageV2: { message: { videoMessage } } }`,
+ * so the top-level `isMedia`/`isVideo` guards miss it and skip the S3 block entirely
+ * (MAR-414). The persisted shape is left untouched; only detection uses the inner content.
+ */
+export function unwrapInboundMediaContent(message: any): any {
+  let content = message;
+  for (let i = 0; i < 5 && content; i++) {
+    const inner = MEDIA_WRAPPERS.map((wrapper) => content?.[wrapper]?.message).find(Boolean);
+    if (!inner) break;
+    content = inner;
+  }
+  return content;
+}
+
 /**
  * Own-key copy of a received message for `getBase64FromMediaMessage`. Its
  * `'messageContextInfo' in msg.message` guard is true through the prototype of a

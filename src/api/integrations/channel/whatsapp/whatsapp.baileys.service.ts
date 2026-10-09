@@ -163,7 +163,7 @@ import {
   PrismaInboundInbox,
   resolveInboundMode,
 } from './inboundInbox';
-import { ownKeyMediaMessage, runInboundMediaUpload } from './inboundMediaUpload';
+import { ownKeyMediaMessage, runInboundMediaUpload, unwrapInboundMediaContent } from './inboundMediaUpload';
 import { attemptDurableInboundSink, dispatchInboundChatbot, DurableInboundSinkFailure } from './inboundSinkDispatch';
 import { enrichOutgoingMessageKey, remoteJidQueryFilters } from './outgoingLid';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
@@ -1739,16 +1739,18 @@ export class BaileysStartupService extends ChannelStartupService {
             }
           }
 
-          const isMedia =
-            received?.message?.imageMessage ||
-            received?.message?.videoMessage ||
-            received?.message?.stickerMessage ||
-            received?.message?.documentMessage ||
-            received?.message?.documentWithCaptionMessage ||
-            received?.message?.ptvMessage ||
-            received?.message?.audioMessage;
+          const mediaContent = unwrapInboundMediaContent(received?.message);
 
-          const isVideo = received?.message?.videoMessage;
+          const isMedia =
+            mediaContent?.imageMessage ||
+            mediaContent?.videoMessage ||
+            mediaContent?.stickerMessage ||
+            mediaContent?.documentMessage ||
+            mediaContent?.documentWithCaptionMessage ||
+            mediaContent?.ptvMessage ||
+            mediaContent?.audioMessage;
+
+          const isVideo = mediaContent?.videoMessage;
 
           if (this.localSettings.readMessages && received.key.id !== 'status@broadcast') {
             await this.client.readMessages([received.key]);
@@ -2987,17 +2989,19 @@ export class BaileysStartupService extends ChannelStartupService {
         }
       }
 
-      const isMedia =
-        messageSent?.message?.imageMessage ||
-        messageSent?.message?.videoMessage ||
-        messageSent?.message?.stickerMessage ||
-        messageSent?.message?.ptvMessage ||
-        messageSent?.message?.documentMessage ||
-        messageSent?.message?.documentWithCaptionMessage ||
-        messageSent?.message?.ptvMessage ||
-        messageSent?.message?.audioMessage;
+      const mediaContent = unwrapInboundMediaContent(messageSent?.message);
 
-      const isVideo = messageSent?.message?.videoMessage;
+      const isMedia =
+        mediaContent?.imageMessage ||
+        mediaContent?.videoMessage ||
+        mediaContent?.stickerMessage ||
+        mediaContent?.ptvMessage ||
+        mediaContent?.documentMessage ||
+        mediaContent?.documentWithCaptionMessage ||
+        mediaContent?.ptvMessage ||
+        mediaContent?.audioMessage;
+
+      const isVideo = mediaContent?.videoMessage;
 
       if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot?.enabled && !isIntegration) {
         this.chatwootService.eventWhatsapp(
