@@ -29,3 +29,19 @@ export async function attemptDurableInboundSink(options: {
   await options.mark(options.sink, state);
   return undefined;
 }
+
+/** Keep legacy LID delivery in off/shadow; only an enforce receipt can retry it. */
+export async function dispatchInboundChatbot(options: {
+  unresolvedLid?: Error;
+  receiptMode?: 'off' | 'shadow' | 'enforce';
+  attempt: (operation: () => Promise<'sent'>) => Promise<boolean>;
+  durable: () => Promise<void>;
+  bestEffort: () => Promise<void>;
+}): Promise<void> {
+  const delivered = await options.attempt(async () => {
+    if (options.unresolvedLid && options.receiptMode === 'enforce') throw options.unresolvedLid;
+    await options.durable();
+    return 'sent';
+  });
+  if (delivered) await options.bestEffort();
+}

@@ -154,6 +154,7 @@ import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
 import { BaileysMessageProcessor } from './baileysMessage.processor';
+import { PrismaLidPhoneAliasStore, resolveInboundAddress, UnresolvedInboundLidError } from './inboundIdentity';
 import {
   classifyInboundMessage,
   inboundPayloadHash,
@@ -162,7 +163,8 @@ import {
   PrismaInboundInbox,
   resolveInboundMode,
 } from './inboundInbox';
-import { attemptDurableInboundSink, DurableInboundSinkFailure } from './inboundSinkDispatch';
+import { ownKeyMediaMessage, runInboundMediaUpload, unwrapInboundMediaContent } from './inboundMediaUpload';
+import { attemptDurableInboundSink, dispatchInboundChatbot, DurableInboundSinkFailure } from './inboundSinkDispatch';
 import { enrichOutgoingMessageKey, remoteJidQueryFilters } from './outgoingLid';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 
@@ -243,6 +245,7 @@ const xmacnaConnectStates: Map<string, XmacnaConnectState> =
 export class BaileysStartupService extends ChannelStartupService {
   private messageProcessor = new BaileysMessageProcessor();
   private readonly inboundInbox: PrismaInboundInbox;
+  private readonly lidPhoneAliases: PrismaLidPhoneAliasStore;
   private inboundWorkerTimer?: NodeJS.Timeout;
   private inboundWorkerRunning = false;
   private readonly inboundWorkerOwner = `baileys-${v4()}`;
@@ -262,6 +265,7 @@ export class BaileysStartupService extends ChannelStartupService {
       onMessageReceive: this.messageHandle['messages.upsert'].bind(this), // Bind the method to the current context
     });
     this.inboundInbox = new PrismaInboundInbox(this.prismaRepository);
+    this.lidPhoneAliases = new PrismaLidPhoneAliasStore(this.prismaRepository);
 
     this.authStateProvider = new AuthStateProvider(this.providerFiles);
   }
@@ -922,6 +926,17 @@ export class BaileysStartupService extends ChannelStartupService {
       });
 
       const recoveredChatbot = await attempt('chatbot', item.chatbotState, async () => {
+        const recoveredAddress = await resolveInboundAddress(
+          this.instance.name,
+          messageRaw.key,
+          this.lidPhoneAliases,
+          (lid) => this.client.signalRepository.lidMapping.getPNForLID(lid),
+        );
+        if (recoveredAddress.senderLid) {
+          messageRaw.key.senderLid = recoveredAddress.senderLid;
+          messageRaw.key.remoteJidAlt = recoveredAddress.remoteJid;
+        }
+        messageRaw.key.remoteJid = recoveredAddress.remoteJid;
         await chatbotController.emitDurableInbound({
           instance: { instanceName: this.instance.name, instanceId: this.instanceId },
           remoteJid: messageRaw.key.remoteJid,
@@ -1368,7 +1383,7 @@ export class BaileysStartupService extends ChannelStartupService {
           activeInboundMode = inboundMode;
           const inboundClassification = classifyInboundMessage(received);
           const inboundMessageId = received.key?.id;
-          const inboundContactScope = normalizeContactScope(
+          let inboundContactScope = normalizeContactScope(
             (received.key as any)?.remoteJidAlt || received.key?.remoteJid,
           );
           const inboundIdentity = inboundMessageId
@@ -1540,6 +1555,34 @@ export class BaileysStartupService extends ChannelStartupService {
               ...cachedJids.flatMap((cached) => [cached.remoteJid, ...cached.jidOptions]),
             ]);
           }
+          let unresolvedInboundLid: UnresolvedInboundLidError | undefined;
+          if (!received.key.fromMe) {
+            try {
+              const resolvedAddress = await resolveInboundAddress(
+                this.instance.name,
+                messageRaw.key,
+                this.lidPhoneAliases,
+                (lid) => this.client.signalRepository.lidMapping.getPNForLID(lid),
+              );
+              inboundContactScope = normalizeContactScope(resolvedAddress.remoteJid);
+              if (resolvedAddress.senderLid) {
+                messageRaw.key.senderLid = resolvedAddress.senderLid;
+                messageRaw.key.remoteJidAlt = resolvedAddress.remoteJid;
+              }
+            } catch (error) {
+              if (!(error instanceof UnresolvedInboundLidError)) throw error;
+              unresolvedInboundLid = error;
+              inboundContactScope = normalizeContactScope(messageRaw.key.remoteJid);
+              this.logger.warn(
+                JSON.stringify({
+                  event: 'unresolved_inbound_lid',
+                  instance: this.instance.name,
+                  inboxMode: inboundMode,
+                  reason: error.message,
+                }),
+              );
+            }
+          }
           let durableMessageRecordId: string | undefined;
 
           if (inboundMode !== 'off' && inboundIdentity && inboundClassification === 'real') {
@@ -1696,16 +1739,18 @@ export class BaileysStartupService extends ChannelStartupService {
             }
           }
 
-          const isMedia =
-            received?.message?.imageMessage ||
-            received?.message?.videoMessage ||
-            received?.message?.stickerMessage ||
-            received?.message?.documentMessage ||
-            received?.message?.documentWithCaptionMessage ||
-            received?.message?.ptvMessage ||
-            received?.message?.audioMessage;
+          const mediaContent = unwrapInboundMediaContent(received?.message);
 
-          const isVideo = received?.message?.videoMessage;
+          const isMedia =
+            mediaContent?.imageMessage ||
+            mediaContent?.videoMessage ||
+            mediaContent?.stickerMessage ||
+            mediaContent?.documentMessage ||
+            mediaContent?.documentWithCaptionMessage ||
+            mediaContent?.ptvMessage ||
+            mediaContent?.audioMessage;
+
+          const isVideo = mediaContent?.videoMessage;
 
           if (this.localSettings.readMessages && received.key.id !== 'status@broadcast') {
             await this.client.readMessages([received.key]);
@@ -1827,45 +1872,66 @@ export class BaileysStartupService extends ChannelStartupService {
                     const hasRealMedia = this.hasValidMediaContent(message);
 
                     if (!hasRealMedia) {
-                      this.logger.warn('Message detected as media but contains no valid media content');
+                      this.logger.warn(
+                        JSON.stringify({
+                          event: 'inbound_media_upload_skipped',
+                          instance: this.instance.name,
+                          messageId: received.key.id,
+                          stage: 'media_validation',
+                          reason: 'invalid_media',
+                        }),
+                      );
                     } else {
-                      const media = await this.getBase64FromMediaMessage({ message }, true);
-
-                      if (!media) {
-                        this.logger.verbose('No valid media to upload (messageContextInfo only), skipping MinIO');
-                      } else {
-                        const { buffer, mediaType, fileName, size } = media;
-                        const mimetype = mimeTypes.lookup(fileName).toString();
-                        const fullName = join(
-                          `${this.instance.id}`,
-                          received.key.remoteJid,
-                          mediaType,
-                          `${Date.now()}_${fileName}`,
-                        );
-                        await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, {
-                          'Content-Type': mimetype,
-                        });
-
-                        await this.prismaRepository.media.create({
-                          data: {
-                            messageId: msg.id,
-                            instanceId: this.instanceId,
-                            type: mediaType,
-                            fileName: fullName,
-                            mimetype,
+                      await runInboundMediaUpload(
+                        { instance: this.instance.name, messageId: received.key.id },
+                        this.logger,
+                        {
+                          download: () =>
+                            this.getBase64FromMediaMessage({ message: ownKeyMediaMessage(message) }, true),
+                          upload: async (media) => {
+                            const { buffer, mediaType, fileName, size } = media;
+                            const mimetype = mimeTypes.lookup(fileName).toString();
+                            const fullName = join(
+                              `${this.instance.id}`,
+                              received.key.remoteJid,
+                              mediaType,
+                              `${Date.now()}_${fileName}`,
+                            );
+                            const result = await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, {
+                              'Content-Type': mimetype,
+                            });
+                            return result instanceof Error ? result : { fullName, mediaType, mimetype };
                           },
-                        });
-
-                        const mediaUrl = await s3Service.getObjectUrl(fullName);
-
-                        messageRaw.message.mediaUrl = mediaUrl;
-
-                        await this.prismaRepository.message.update({ where: { id: msg.id }, data: messageRaw });
-                      }
+                          createMedia: async (_media, { fullName, mediaType, mimetype }) => {
+                            await this.prismaRepository.media.create({
+                              data: {
+                                messageId: msg.id,
+                                instanceId: this.instanceId,
+                                type: mediaType,
+                                fileName: fullName,
+                                mimetype,
+                              },
+                            });
+                          },
+                          updateMessage: async (_media, { fullName }) => {
+                            const mediaUrl = await s3Service.getObjectUrl(fullName);
+                            messageRaw.message.mediaUrl = mediaUrl;
+                            await this.prismaRepository.message.update({ where: { id: msg.id }, data: messageRaw });
+                          },
+                        },
+                      );
                     }
                   }
                 } catch (error) {
-                  this.logger.error(['Error on upload file to minio', error?.message, error?.stack]);
+                  this.logger.warn(
+                    JSON.stringify({
+                      event: 'inbound_media_upload_failed',
+                      instance: this.instance.name,
+                      messageId: received.key.id,
+                      stage: 'pre_upload',
+                      errorType: error instanceof Error ? error.name : typeof error,
+                    }),
+                  );
                 }
               }
             }
@@ -1905,7 +1971,7 @@ export class BaileysStartupService extends ChannelStartupService {
           this.logger.verbose(messageRaw);
 
           sendTelemetry(`received.message.${messageRaw.messageType ?? 'unknown'}`);
-          if (messageRaw.key.remoteJid?.includes('@lid') && messageRaw.key.remoteJidAlt) {
+          if (!unresolvedInboundLid && messageRaw.key.remoteJid?.includes('@lid') && messageRaw.key.remoteJidAlt) {
             messageRaw.key.remoteJid = messageRaw.key.remoteJidAlt;
           }
           console.log(messageRaw);
@@ -1919,23 +1985,25 @@ export class BaileysStartupService extends ChannelStartupService {
             return 'sent';
           });
 
-          const chatbotDelivered = await attemptActiveSink('chatbot', async () => {
-            await chatbotController.emitDurableInbound({
-              instance: { instanceName: this.instance.name, instanceId: this.instanceId },
-              remoteJid: messageRaw.key.remoteJid,
-              msg: messageRaw,
-              pushName: messageRaw.pushName,
-            });
-            return 'sent';
+          await dispatchInboundChatbot({
+            unresolvedLid: unresolvedInboundLid,
+            receiptMode: activeReceipt ? activeInboundMode : undefined,
+            attempt: (operation) => attemptActiveSink('chatbot', operation),
+            durable: () =>
+              chatbotController.emitDurableInbound({
+                instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+                remoteJid: messageRaw.key.remoteJid,
+                msg: messageRaw,
+                pushName: messageRaw.pushName,
+              }),
+            bestEffort: () =>
+              chatbotController.emitBestEffortInbound({
+                instance: { instanceName: this.instance.name, instanceId: this.instanceId },
+                remoteJid: messageRaw.key.remoteJid,
+                msg: messageRaw,
+                pushName: messageRaw.pushName,
+              }),
           });
-          if (chatbotDelivered) {
-            await chatbotController.emitBestEffortInbound({
-              instance: { instanceName: this.instance.name, instanceId: this.instanceId },
-              remoteJid: messageRaw.key.remoteJid,
-              msg: messageRaw,
-              pushName: messageRaw.pushName,
-            });
-          }
 
           const contact = await this.prismaRepository.contact.findFirst({
             where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },
@@ -2921,17 +2989,19 @@ export class BaileysStartupService extends ChannelStartupService {
         }
       }
 
-      const isMedia =
-        messageSent?.message?.imageMessage ||
-        messageSent?.message?.videoMessage ||
-        messageSent?.message?.stickerMessage ||
-        messageSent?.message?.ptvMessage ||
-        messageSent?.message?.documentMessage ||
-        messageSent?.message?.documentWithCaptionMessage ||
-        messageSent?.message?.ptvMessage ||
-        messageSent?.message?.audioMessage;
+      const mediaContent = unwrapInboundMediaContent(messageSent?.message);
 
-      const isVideo = messageSent?.message?.videoMessage;
+      const isMedia =
+        mediaContent?.imageMessage ||
+        mediaContent?.videoMessage ||
+        mediaContent?.stickerMessage ||
+        mediaContent?.ptvMessage ||
+        mediaContent?.documentMessage ||
+        mediaContent?.documentWithCaptionMessage ||
+        mediaContent?.ptvMessage ||
+        mediaContent?.audioMessage;
+
+      const isVideo = mediaContent?.videoMessage;
 
       if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot?.enabled && !isIntegration) {
         this.chatwootService.eventWhatsapp(
