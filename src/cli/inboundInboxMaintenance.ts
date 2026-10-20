@@ -6,7 +6,7 @@ import {
 import { PrismaClient } from '@prisma/client';
 import { closeSync, openSync, readFileSync, writeFileSync } from 'fs';
 
-type Command = 'backfill' | 'export' | 'import';
+type Command = 'backfill' | 'export' | 'import' | 'alias-list' | 'alias-reset';
 
 export type Options = {
   command: Command;
@@ -16,6 +16,8 @@ export type Options = {
   targetScope?: string;
   input?: string;
   output?: string;
+  lid?: string;
+  snapshotOut?: string;
   batchSize: number;
   live: boolean;
 };
@@ -43,6 +45,8 @@ function usage(): never {
       '  npm run inbound-inbox:maintenance -- backfill --source-cluster NAME --instance-name NAME [--batch-size N] [--live]',
       '  npm run inbound-inbox:maintenance -- export --source-cluster NAME --instance-name NAME --output FILE',
       '  npm run inbound-inbox:maintenance -- import --input FILE --target-cluster NAME --target-scope NAME [--live]',
+      '  npm run inbound-inbox:maintenance -- alias-list --instance-name NAME',
+      '  npm run inbound-inbox:maintenance -- alias-reset --instance-name NAME --lid DIGITS@lid [--snapshot-out FILE --live]',
       '',
       'backfill/import are dry-run by default. export refuses to overwrite FILE.',
     ].join('\n'),
@@ -52,7 +56,7 @@ function usage(): never {
 
 function parseArgs(argv: string[]): Options {
   const command = argv.shift() as Command;
-  if (!['backfill', 'export', 'import'].includes(command)) usage();
+  if (!['backfill', 'export', 'import', 'alias-list', 'alias-reset'].includes(command)) usage();
   const options: Options = { command, batchSize: 500, live: false };
   while (argv.length > 0) {
     const flag = argv.shift();
@@ -63,6 +67,8 @@ function parseArgs(argv: string[]): Options {
     else if (flag === '--target-scope') options.targetScope = argv.shift();
     else if (flag === '--input') options.input = argv.shift();
     else if (flag === '--output') options.output = argv.shift();
+    else if (flag === '--lid') options.lid = argv.shift();
+    else if (flag === '--snapshot-out') options.snapshotOut = argv.shift();
     else if (flag === '--batch-size') options.batchSize = Number.parseInt(argv.shift() || '', 10);
     else usage();
   }
@@ -70,7 +76,48 @@ function parseArgs(argv: string[]): Options {
   if (command === 'backfill' && (!options.sourceCluster || !options.instanceName)) usage();
   if (command === 'export' && (!options.sourceCluster || !options.instanceName || !options.output)) usage();
   if (command === 'import' && (!options.input || !options.targetCluster || !options.targetScope)) usage();
+  if (command === 'alias-list' && !options.instanceName) usage();
+  if (command === 'alias-reset' && (!options.instanceName || !options.lid || (options.live && !options.snapshotOut)))
+    usage();
   return options;
+}
+
+export async function listAmbiguousAliases(prisma: PrismaClient, options: Options): Promise<void> {
+  const instanceScope = normalizeInstanceScope(assertSafeName(options.instanceName!, 'instance-name'));
+  const rows = await prisma.lidPhoneAlias.findMany({
+    where: { instanceScope, ambiguous: true },
+    orderBy: { lidJid: 'asc' },
+    select: { lidJid: true, updatedAt: true },
+  });
+  console.log(JSON.stringify({ instanceScope, count: rows.length, aliases: rows }));
+}
+
+export async function resetAmbiguousAlias(prisma: PrismaClient, options: Options): Promise<void> {
+  const instanceScope = normalizeInstanceScope(assertSafeName(options.instanceName!, 'instance-name'));
+  const lidJid = options.lid!;
+  if (!/^[1-9][0-9]{1,24}@lid$/.test(lidJid)) throw new Error('lid must be a full numeric @lid JID');
+  const where = { instanceScope_lidJid: { instanceScope, lidJid } };
+  const current = await prisma.lidPhoneAlias.findUnique({ where });
+  if (!current?.ambiguous) throw new Error('Ambiguous alias not found for this instance and LID');
+  if (!options.live) {
+    console.log(JSON.stringify({ mode: 'dry-run', instanceScope, lidJid, wouldReset: true }));
+    return;
+  }
+  const fd = openSync(options.snapshotOut!, 'wx', 0o600);
+  try {
+    writeFileSync(
+      fd,
+      `${JSON.stringify({ schemaVersion: 1, capturedAt: new Date().toISOString(), alias: current }, null, 2)}\n`,
+      'utf8',
+    );
+  } finally {
+    closeSync(fd);
+  }
+  const deleted = await prisma.lidPhoneAlias.deleteMany({ where: { instanceScope, lidJid, ambiguous: true } });
+  if (deleted.count !== 1) throw new Error('Alias changed after snapshot; no reset performed');
+  const readback = await prisma.lidPhoneAlias.findUnique({ where });
+  if (readback) throw new Error('Alias reset readback failed');
+  console.log(JSON.stringify({ mode: 'live', instanceScope, lidJid, snapshot: options.snapshotOut, deleted: 1 }));
 }
 
 function assertSafeName(value: string, label: string): string {
@@ -228,7 +275,9 @@ async function main(): Promise<void> {
     await prisma.$connect();
     if (options.command === 'backfill') await backfill(prisma, options);
     else if (options.command === 'export') await exportTombstones(prisma, options);
-    else await importTombstones(prisma, options);
+    else if (options.command === 'import') await importTombstones(prisma, options);
+    else if (options.command === 'alias-list') await listAmbiguousAliases(prisma, options);
+    else await resetAmbiguousAlias(prisma, options);
   } finally {
     await prisma.$disconnect();
   }

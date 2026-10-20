@@ -216,6 +216,16 @@ model InboundReceipt {
   @@index([instanceScope, contactScope, createdAt])
 }
 
+model LidPhoneAlias {
+  instanceScope String   @db.VarChar(67)
+  lidJid        String   @db.VarChar(100)
+  phoneJid      String?  @db.VarChar(100)
+  ambiguous     Boolean  @default(false)
+  updatedAt     DateTime @updatedAt
+
+  @@id([instanceScope, lidJid])
+}
+
 model MessageUpdate {
   id          String   @id @default(cuid())
   keyId       String   @db.VarChar(100)

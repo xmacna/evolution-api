@@ -110,22 +110,26 @@ test('all auth-state providers persist arbitrary rc14 key categories', () => {
 });
 
 test('security overrides resolve to the audited runtime versions', () => {
-  assert.equal(require('axios/package.json').version, '1.19.0');
+  assert.equal(require('axios/package.json').version, '1.20.0');
   assert.equal(require('link-preview-js/package.json').version, '5.0.0');
 
   const chatwootRoot = require.resolve('@figuro/chatwoot-sdk');
   const chatwootAxiosPackage = require.resolve('axios/package.json', { paths: [chatwootRoot] });
-  assert.equal(require(chatwootAxiosPackage).version, '1.19.0');
+  assert.equal(require(chatwootAxiosPackage).version, '1.20.0');
 
   const baileysRoot = require.resolve('baileys');
   const baileysLinkPreviewPackage = require.resolve('link-preview-js/package.json', { paths: [baileysRoot] });
   assert.equal(require(baileysLinkPreviewPackage).version, '5.0.0');
 
-  assert.equal(installedPackage('multer').version, '2.3.0');
-  assert.equal(installedPackage('sharp').version, '0.35.4');
+  assert.equal(installedPackage('multer').version, '2.4.0');
+  assert.equal(installedPackage('sharp').version, '0.35.5');
+  assert.equal(installedPackage('compression').version, '1.8.2');
+  const baileysRuntime = installedPackage('baileys');
+  assert.equal(installedPackage('music-metadata', baileysRuntime.dir).version, '11.16.1');
 
   const express = installedPackage('express');
   const bodyParser = installedPackage('body-parser', express.dir);
+  assert.equal(installedPackage('proxy-addr', express.dir).version, '2.0.8');
   assert.equal(installedPackage('qs', express.dir).version, '6.16.0');
   assert.equal(installedPackage('qs', bodyParser.dir).version, '6.16.0');
 
