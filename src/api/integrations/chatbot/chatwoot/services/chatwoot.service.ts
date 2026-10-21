@@ -1,6 +1,7 @@
 import { InstanceDto } from '@api/dto/instance.dto';
 import { Options, Quoted, SendAudioDto, SendMediaDto, SendTextDto } from '@api/dto/sendMessage.dto';
 import { resolveInboundMode } from '@api/integrations/channel/whatsapp/inboundInbox';
+import { formatGroupParticipantHeader } from '@api/integrations/chatbot/chatwoot/chatwootGroupParticipant';
 import { buildChatwootEditSourceId } from '@api/integrations/chatbot/chatwoot/chatwootMessageIdentity';
 import { ChatwootDto } from '@api/integrations/chatbot/chatwoot/dto/chatwoot.dto';
 import { postgresClient } from '@api/integrations/chatbot/chatwoot/libs/postgres.client';
@@ -29,7 +30,6 @@ import { WAMessageContent, WAMessageKey } from 'baileys';
 import dayjs from 'dayjs';
 import FormData from 'form-data';
 import { Jimp, JimpMime } from 'jimp';
-import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import Long from 'long';
 import mimeTypes from 'mime-types';
 import path from 'path';
@@ -2111,19 +2111,12 @@ export class ChatwootService {
           fileStream.push(null);
 
           if (body.key.remoteJid.includes('@g.us')) {
-            const participantName = body.pushName;
-            const rawPhoneNumber =
-              body.key.addressingMode === 'lid' && !body.key.fromMe && body.key.participantAlt
-                ? body.key.participantAlt.split('@')[0].split(':')[0]
-                : body.key.participant.split('@')[0].split(':')[0];
-            const formattedPhoneNumber = parsePhoneNumberFromString(`+${rawPhoneNumber}`).formatInternational();
+            const participantHeader = formatGroupParticipantHeader(body.key, body.pushName);
 
             let content: string;
 
             if (!body.key.fromMe) {
-              content = bodyMessage
-                ? `**${formattedPhoneNumber} - ${participantName}:**\n\n${bodyMessage}`
-                : `**${formattedPhoneNumber} - ${participantName}:**`;
+              content = [participantHeader, bodyMessage].filter(Boolean).join('\n\n');
             } else {
               content = bodyMessage || '';
             }
@@ -2294,17 +2287,12 @@ export class ChatwootService {
         }
 
         if (body.key.remoteJid.includes('@g.us')) {
-          const participantName = body.pushName;
-          const rawPhoneNumber =
-            body.key.addressingMode === 'lid' && !body.key.fromMe && body.key.participantAlt
-              ? body.key.participantAlt.split('@')[0].split(':')[0]
-              : body.key.participant.split('@')[0].split(':')[0];
-          const formattedPhoneNumber = parsePhoneNumberFromString(`+${rawPhoneNumber}`).formatInternational();
+          const participantHeader = formatGroupParticipantHeader(body.key, body.pushName);
 
           let content: string;
 
           if (!body.key.fromMe) {
-            content = `**${formattedPhoneNumber} - ${participantName}:**\n\n${bodyMessage}`;
+            content = [participantHeader, bodyMessage].filter(Boolean).join('\n\n');
           } else {
             content = `${bodyMessage}`;
           }
