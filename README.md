@@ -77,6 +77,8 @@ Each audio uses its own source for transcription. `transcriptionStatus: unavaila
 
 This prepares individual event transport; it does not enable PostgreSQL writes or change the existing in-memory debounce crash window. Verification: `npm run test:xmacna-inbox` includes multi-message, audio and actual n8n service boundary cases.
 
+The PostgreSQL integration fixture uses an explicit `connection_limit=64` and runs test files sequentially. The 840 simultaneous claims within the stress case remain unchanged; this avoids a host-dependent default pool exhausting transaction admission while keeping the default transaction timeouts.
+
 ## Quick Start
 
 ### Prerequisites

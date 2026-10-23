@@ -26,7 +26,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://evolution_test:local_ci_only@127.0.0.1:5432/evolution_test
+      DATABASE_CONNECTION_URI: postgresql://evolution_test:local_ci_only@127.0.0.1:5432/evolution_test?connection_limit=64
       XMACNA_INBOX_INTEGRATION: '1'
     steps:
       - uses: actions/checkout@v5
