@@ -7,6 +7,7 @@ import axios from 'axios';
 import { BaseChatbotService } from '../../base-chatbot.service';
 import { ChatbotDebounceMetadata, normalizeMessageTimestamp } from '../../chatbotDebounce';
 import { OpenaiService } from '../../openai/services/openai.service';
+import { captureIndividualChatbotMessage, prepareN8nIndividualMessages } from '../n8nIndividualMessages';
 
 export class N8nService extends BaseChatbotService<N8n, N8nSetting> {
   private openaiService: OpenaiService;
@@ -56,6 +57,18 @@ export class N8nService extends BaseChatbotService<N8n, N8nSetting> {
       // adivinhar. Sem debounce, os tres campos descrevem uma mensagem so.
       const debounceMetadata = msg?.debounceMetadata as ChatbotDebounceMetadata | undefined;
       const lastMessageTimestamp = normalizeMessageTimestamp(msg?.messageTimestamp);
+      const captured = debounceMetadata?.individualMessages ?? [captureIndividualChatbotMessage(msg, content)];
+      if (captured.length !== (debounceMetadata?.messageCount ?? 1)) {
+        throw new Error('Incomplete individual n8n events; refusing to represent a batch as one event');
+      }
+      const individualMessages = await prepareN8nIndividualMessages(captured, (source) =>
+        this.openaiService.speechToText(source, instance),
+      );
+      const missingTranscriptions = individualMessages.filter(
+        (item) => item.transcriptionStatus === 'unavailable',
+      ).length;
+      if (missingTranscriptions)
+        this.logger.warn(`[N8n] Audio transcription unavailable for ${missingTranscriptions} individual event(s)`);
       const payload: any = {
         chatInput: content,
         sessionId: session.sessionId,
@@ -70,19 +83,13 @@ export class N8nService extends BaseChatbotService<N8n, N8nSetting> {
         instanceName: instance.instanceName,
         serverUrl: this.configService.get<HttpServer>('SERVER').URL,
         apiKey: instance.token,
+        ownerLid: instance.client?.user?.lid ? String(instance.client.user.lid).replace(/[@:].*$/, '') : undefined,
+        individualMessages,
       };
 
       // Handle audio messages
-      if (this.isAudioMessage(content) && msg) {
-        try {
-          this.logger.debug(`[N8n] Downloading audio for Whisper transcription`);
-          const transcription = await this.openaiService.speechToText(msg, instance);
-          if (transcription) {
-            payload.chatInput = `[audio] ${transcription}`;
-          }
-        } catch (err) {
-          this.logger.error(`[N8n] Failed to transcribe audio: ${err}`);
-        }
+      if (captured.some((item) => item.messageType === 'audio')) {
+        payload.chatInput = individualMessages.map((item) => item.chatInput).join('\n');
       }
 
       const headers: Record<string, string> = {};

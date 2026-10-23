@@ -21,6 +21,7 @@ import {
   processChatbotDebounce,
 } from './chatbotDebounce';
 import { runBestEffortChatbots } from './chatbotDispatchPolicy';
+import type { IndividualChatbotMessage } from './n8n/n8nIndividualMessages';
 
 export type EmitData = {
   instance: InstanceDto;
@@ -143,9 +144,11 @@ export class ChatbotController {
     debounceTime: number,
     callback: ChatbotDebounceCallback,
     messageTimestamp?: unknown,
+    individualMessage?: IndividualChatbotMessage,
   ): ChatbotDebounceAcceptance {
     return processChatbotDebounce(userMessageDebounce, content, debounceKey, debounceTime, callback, {
       messageTimestamp,
+      individualMessage,
       onMerged: (merged) => this.logger.log('message debounced: ' + merged),
       onFlushed: (flushed) => this.logger.log('Debounce complete. Processing message: ' + flushed),
       onFlushError: (error) =>

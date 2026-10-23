@@ -69,6 +69,16 @@ Evolution API integrates natively with many platforms:
 
 ---
 
+## Xmacna n8n message events
+
+The n8n webhook includes `individualMessages`, captured before debounce. Each item preserves its provider `keyId`, `remoteJid`, `participant`, `fromMe`, message type and content. `messageTimestamp` is the original epoch in seconds; `providerTimestamp` is its safe, positive millisecond conversion. Missing or invalid values remain absent and must be rejected by a persistence consumer, never replaced with the current time.
+
+Each audio uses its own source for transcription. `transcriptionStatus: unavailable` preserves the original event when transcription fails; a persistence consumer must handle that state explicitly. Raw audio keys and base64 are excluded from this array. Existing aggregate fields and the live `ownerLid` field remain available. A batch with an incomplete event list fails before the webhook POST.
+
+This prepares individual event transport; it does not enable PostgreSQL writes or change the existing in-memory debounce crash window. Verification: `npm run test:xmacna-inbox` includes multi-message, audio and actual n8n service boundary cases.
+
+The PostgreSQL integration fixture uses an explicit `connection_limit=64` and runs test files sequentially. The 840 simultaneous claims within the stress case remain unchanged; this avoids a host-dependent default pool exhausting transaction admission while keeping the default transaction timeouts.
+
 ## Quick Start
 
 ### Prerequisites

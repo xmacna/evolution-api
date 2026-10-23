@@ -25,6 +25,8 @@
  * nota, nao como padrao.
  */
 
+import type { IndividualChatbotMessage } from './n8n/n8nIndividualMessages';
+
 export type ChatbotDebounceMetadata = {
   /** Quantas mensagens do lead foram coalescidas neste buffer. */
   messageCount: number;
@@ -32,6 +34,8 @@ export type ChatbotDebounceMetadata = {
   firstMessageTimestamp?: number;
   /** `messageTimestamp` (epoch em segundos) da ultima mensagem do buffer. */
   lastMessageTimestamp?: number;
+  /** Provider events captured before coalescing; n8n only. */
+  individualMessages?: IndividualChatbotMessage[];
 };
 
 export type ChatbotDebounceCallback = (content: string, metadata: ChatbotDebounceMetadata) => Promise<void>;
@@ -51,6 +55,7 @@ export type ChatbotDebounceStore = Record<string, ChatbotDebounceEntry>;
 export type ChatbotDebounceOptions = {
   /** `messageTimestamp` normalizado da mensagem que esta sendo aceita. */
   messageTimestamp?: unknown;
+  individualMessage?: IndividualChatbotMessage;
   onMerged?: (content: string) => void;
   onFlushed?: (content: string) => void;
   /** Unico lugar onde uma falha do flush destacado fica visivel. */
@@ -112,6 +117,9 @@ export function processChatbotDebounce(
     existing.message += `\n${content}`;
     existing.callback = callback;
     existing.metadata.messageCount += 1;
+    if (options.individualMessage) {
+      (existing.metadata.individualMessages ??= []).push(structuredClone(options.individualMessage));
+    }
     if (timestamp !== undefined) {
       if (existing.metadata.firstMessageTimestamp === undefined) {
         existing.metadata.firstMessageTimestamp = timestamp;
@@ -139,6 +147,7 @@ export function processChatbotDebounce(
         messageCount: 1,
         firstMessageTimestamp: timestamp,
         lastMessageTimestamp: timestamp,
+        ...(options.individualMessage ? { individualMessages: [structuredClone(options.individualMessage)] } : {}),
       },
       flushed,
       resolveFlushed,
@@ -154,7 +163,7 @@ export function processChatbotDebounce(
     if (store[debounceKey] !== scheduled) return;
     delete store[debounceKey];
     options.onFlushed?.(scheduled.message);
-    const snapshot: ChatbotDebounceMetadata = { ...scheduled.metadata };
+    const snapshot = structuredClone(scheduled.metadata);
     void Promise.resolve()
       .then(() => scheduled.callback(scheduled.message, snapshot))
       .then(
@@ -166,5 +175,5 @@ export function processChatbotDebounce(
       );
   }, debounceTime * 1000);
 
-  return { merged, metadata: { ...scheduled.metadata }, flushed: scheduled.flushed };
+  return { merged, metadata: structuredClone(scheduled.metadata), flushed: scheduled.flushed };
 }

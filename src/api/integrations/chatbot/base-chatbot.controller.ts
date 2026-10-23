@@ -17,6 +17,7 @@ import {
   ChatbotDebounceStore,
   normalizeMessageTimestamp,
 } from './chatbotDebounce';
+import { captureIndividualChatbotMessage } from './n8n/n8nIndividualMessages';
 
 /**
  * XMACNA_DEBOUNCE_DETACHED_518: os metadados do buffer viajam numa copia rasa da
@@ -971,6 +972,7 @@ export abstract class BaseChatbotController<BotType = any, BotData extends BaseC
             );
           },
           normalizeMessageTimestamp(msg?.messageTimestamp),
+          this.integrationName === 'N8n' ? captureIndividualChatbotMessage(msg, content) : undefined,
         );
       } else {
         await this.processBot(
