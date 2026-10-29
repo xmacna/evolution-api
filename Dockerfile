@@ -12,8 +12,10 @@ WORKDIR /evolution
 COPY ./package*.json ./
 COPY ./tsconfig.json ./
 COPY ./tsup.config.ts ./
+COPY ./Docker/scripts/patch-baileys-tctoken.cjs ./Docker/scripts/patch-baileys-tctoken.cjs
 
 RUN npm ci --silent
+RUN node ./Docker/scripts/patch-baileys-tctoken.cjs
 
 COPY ./src ./src
 COPY ./public ./public

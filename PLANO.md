@@ -1,0 +1,23 @@
+# TC token e logouts — issue elysium 1026
+
+Dono: wk-evolution-versao-sol. Responsável: Vesper/Argos.
+Posse: branch fix/tctoken-persistence-1026-20261029 neste checkout isolado; evidências locais em C:/Users/lucca/argos/.local/evolution-versao-20261029/seguimento-1026.
+Origem: xmacna/evolution-api, main de 23/10; não é afirmação de que main inteiro esteja implantado.
+
+Ordem de Argos, 29/10 às 21:58Z: “(1) siga com a atribuição dos logouts de 25/09 16:32 e 20/10 14:12, só leitura, pelos logs de acesso e auditoria retidos: quem ou qual rotina chamou /instance/logout; (2) siga com o teste de regressão offline e a correção focal da persistência (store e cache reais, token frio, resposta tardia, recriar o store), sem deploy e sem tocar no serviço. Resultados comentados na #1026 e ENTREGA no general2. O canário com número só vem depois, com a minha decisão.”
+
+- [x] Investigar atribuição dos logouts e registrar limite preciso: autor/rotina e chamada HTTP não comprovados.
+- [x] Reproduzir falha com módulos rc14 reais, cache real, armazenamento persistente e store recriado.
+- [x] Implementar correção focal sem aguardar IQ no mutex de envio; testar concorrência, isolamento e falhas.
+- [x] Documentar instalação/rollback do patch sem deploy; publicação da branch na entrega.
+- [ ] Comentar resultado sem dados de cliente na issue1026 e registrar ENTREGA no general2.
+
+Critério de pronto: regressão falha no rc14 original e passa com correção; token e índice sobrevivem ao cache/store recriados; callback usa transação nova; erros de IQ liberam dedup; código revisto e checks proporcionais. Nenhum deploy, serviço alterado ou canário.
+
+Verificação de logs: o mesmo texto de logout existe em quatro famílias de caminhos; não atribuir a chamada HTTP por esse texto. AWS em operações de leitura; sem send-command. Logs remotos recentes e metadados de retenção já coletados são reaproveitados.
+
+AGUARDA: Argos decidir canário somente depois da entrega; não executar nesta missão.
+
+Prova: rc14 original falha em quatro dos sete casos; candidato passa dez testes específicos, sem skips, mais 14 de compatibilidade e tsc. Redis 7.4.12 local encerrado após o ensaio. As quatro implementações de provider/cache testadas são iguais às fontes da imagem principal implantada. Evidências, relatório e limites na pasta local citada acima; documentação do patch em docs/tctoken-persistence-1026.md.
+
+AGUARDA: Argos/Rafael indicar eventual access/audit log histórico dos segundos solicitados, se existir fora das fontes examinadas. Não houve fonte suficiente para identificar o chamador; quatro famílias de código podem emitir a mesma mensagem de logout.
