@@ -1,5 +1,7 @@
 # TC token e logouts — issue elysium 1026
 
+Regra vigente de Argos, 29/10 às 22:41Z, até segunda ordem: nenhum agente pareia, desconecta, faz logout ou lê QR de instância por script ou pelo Manager. Pareamento somente por uma pessoa, exclusivamente pelo Partenon, com Vesper avisado antes. Qualquer canário futuro também deve obedecer; os ensaios desta frente são offline, sem conta WhatsApp. Pausa de campanhas em lista é responsabilidade do ger-disparo-ativo-sol; não operar campanhas aqui.
+
 Dono: wk-evolution-versao-sol. Responsável: Vesper/Argos.
 Posse: branch fix/tctoken-persistence-1026-20261029 neste checkout isolado; evidências locais em C:/Users/lucca/argos/.local/evolution-versao-20261029/seguimento-1026.
 Origem: xmacna/evolution-api, main de 23/10; não é afirmação de que main inteiro esteja implantado.
@@ -16,7 +18,7 @@ Critério de pronto: regressão falha no rc14 original e passa com correção; t
 
 Verificação de logs: o mesmo texto de logout existe em quatro famílias de caminhos; não atribuir a chamada HTTP por esse texto. AWS em operações de leitura; sem send-command. Logs remotos recentes e metadados de retenção já coletados são reaproveitados.
 
-AGUARDA: Argos decidir canário somente depois da entrega; não executar nesta missão.
+AGUARDA: Argos decidir canário somente depois da entrega; não executar nesta missão. Eventual pareamento cabe exclusivamente a uma pessoa pelo Partenon, com Vesper avisado antes; nenhuma operação de vínculo por agente.
 
 Prova: rc14 original falha em quatro dos sete casos; candidato passa dez testes específicos, sem skips, mais 14 de compatibilidade e tsc. Redis 7.4.12 local encerrado após o ensaio. As quatro implementações de provider/cache testadas são iguais às fontes da imagem principal implantada. Evidências, relatório e limites na pasta local citada acima; documentação do patch em docs/tctoken-persistence-1026.md.
 

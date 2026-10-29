@@ -43,6 +43,8 @@ As provas locais RED/GREEN e a auditoria de logouts estão no diretório interno
 
 Esse resultado demonstra persistência no ensaio, não entrega real de WhatsApp nem causa ou solução de banimento. Canário com número, validação ARM64, comparação dos demais patches e decisão de release continuam com Argos/Lucca.
 
+Regra de Argos de 29/10/2026 22:41 UTC, até segunda ordem: agentes não pareiam, desconectam, fazem logout ou leem QR de instância por script ou Manager. Pareamento somente por uma pessoa pelo Partenon, com Vesper avisado antes. Uma futura aprovação de canário não dispensa essa regra. Os testes descritos aqui usam dados sintéticos e permanecem offline.
+
 ## Retorno
 
 O patch não muda schema nem formato dos registros. No desenvolvimento, uma reinstalação limpa pelo lockfile restaura os arquivos originais; no futuro rollout autorizado, o retorno é à imagem/bundle anterior fixado, preservando os dados criados depois da virada. Não apagar auth-state nem restaurar chaves Signal antigas para desfazer somente código.
