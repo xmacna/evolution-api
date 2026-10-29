@@ -10,4 +10,4 @@ Resultado: rc14 original com quatro falhas de persistência; candidato com dez t
 
 Logouts: autor/rotina e chamada à rota HTTP permanecem não comprovados. Os logs retidos examinados não cobrem os segundos pedidos, e quatro caminhos compartilham o texto. Há busca complementar local com cobertura e ausência de recibo explicitadas; não ampliar isso para todas as máquinas/painéis.
 
-AGUARDA: revisão do candidato; fonte histórica adicional, se houver; decisão expressa de Argos para canário com número. PR e recibos de comentário/ENTREGA constam do PLANO e da pasta de evidências após a publicação. Não encerrar o próprio pane; responsável fecha pelo rito.
+AGUARDA: revisão do candidato; fonte histórica adicional, se houver; decisão expressa de Argos para canário com número. PR em draft: https://github.com/xmacna/evolution-api/pull/7 . Comentário publicado e conferido na issue1026 e ENTREGA no general2; links e recibos no PLANO e na pasta de evidências. CI termina por evento no GitHub, sob acompanhamento do revisor; não há polling deste worker. Não encerrar o próprio pane; responsável fecha pelo rito.
