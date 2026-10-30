@@ -1,6 +1,7 @@
 import { InstanceDto } from '@api/dto/instance.dto';
 import { Options, Quoted, SendAudioDto, SendMediaDto, SendTextDto } from '@api/dto/sendMessage.dto';
 import { resolveInboundMode } from '@api/integrations/channel/whatsapp/inboundInbox';
+import { createChatwootAdThumbnail } from '@api/integrations/chatbot/chatwoot/chatwootAdThumbnail';
 import { formatGroupParticipantHeader } from '@api/integrations/chatbot/chatwoot/chatwootGroupParticipant';
 import { buildChatwootEditSourceId } from '@api/integrations/chatbot/chatwoot/chatwootMessageIdentity';
 import { ChatwootDto } from '@api/integrations/chatbot/chatwoot/dto/chatwoot.dto';
@@ -29,7 +30,6 @@ import axios from 'axios';
 import { WAMessageContent, WAMessageKey } from 'baileys';
 import dayjs from 'dayjs';
 import FormData from 'form-data';
-import { Jimp, JimpMime } from 'jimp';
 import Long from 'long';
 import mimeTypes from 'mime-types';
 import path from 'path';
@@ -2246,12 +2246,7 @@ export class ChatwootService {
           const nameFile = `${random}.${mimeTypes.extension(mimeType)}`;
           const fileData = Buffer.from(imgBuffer.data, 'binary');
 
-          const img = await Jimp.read(fileData);
-          await img.cover({
-            w: 320,
-            h: 180,
-          });
-          const processedBuffer = await img.getBuffer(JimpMime.png);
+          const processedBuffer = await createChatwootAdThumbnail(fileData);
 
           const fileStream = new Readable();
           fileStream._read = () => {}; // _read is required but you can noop it
