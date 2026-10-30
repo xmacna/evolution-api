@@ -131,7 +131,10 @@ export class BusinessStartupService extends ChannelStartupService {
     try {
       await this.loadChatwoot();
 
-      this.phoneNumber = createJid(content.messages?.[0]?.from || content.statuses?.[0]?.recipient_id);
+      const recipient = content.messages?.[0]?.from || content.statuses?.[0]?.recipient_id;
+      if (typeof recipient === 'string' && recipient.trim()) {
+        this.phoneNumber = createJid(recipient);
+      }
 
       await this.eventHandler(content);
     } catch (error) {

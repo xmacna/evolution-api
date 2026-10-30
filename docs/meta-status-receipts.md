@@ -12,7 +12,9 @@ before relaying it. Its recipient and direction come from the matched local mess
 the shared mutable recipient of another webhook. An unknown local message is skipped; this change
 does not backfill old receipts or introduce a receipt retry queue.
 
-The channel sets recipient identity before handling the event and awaits the handler. Ordinary
+The channel sets optional recipient identity before handling the event and awaits the handler.
+A status without `recipient_id` can still be correlated through its stored message identity;
+it cannot prevent the remaining receipts from reaching the handler. Ordinary
 incoming messages retain their chatbot, message, and contact ingestion. A Meta contact without a
 profile phone uses the incoming message JID. Contact updates remain scoped to the current instance.
 No database migration, outgoing-message contract, pairing flow, or runtime recipe is changed.

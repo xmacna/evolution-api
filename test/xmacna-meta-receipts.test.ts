@@ -238,3 +238,35 @@ test('eventHandler waits until a status has actually been persisted', async () =
   await running;
   assert.equal(completed, true);
 });
+
+for (const firstId of ['one', 'unknown']) {
+  test(`connect accepts the first ${firstId} receipt without recipient_id and processes the rest`, async () => {
+    const h = harness();
+    h.self.loadChatwoot = async () => undefined;
+    h.self.findSettings = async () => ({});
+    await h.self.connectToWhatsapp({
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                metadata,
+                statuses: [{ id: firstId, status: 'sent' }, receipt('two', 'delivered')],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    assert.deepEqual(h.errors, []);
+    assert.deepEqual(
+      h.updates.map((x) => [x.keyId, x.status]),
+      firstId === 'one'
+        ? [
+            ['one', 'SENT'],
+            ['two', 'DELIVERED'],
+          ]
+        : [['two', 'DELIVERED']],
+    );
+  });
+}
