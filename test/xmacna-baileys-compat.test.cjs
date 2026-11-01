@@ -237,7 +237,9 @@ test('S3 wrapper presigns through @aws-sdk/client-s3 (minio and its stream-json 
 
 test('Prisma config deepmerge keeps plain-object merge semantics on deepmerge-ts 8', async () => {
   const prismaConfigRoot = require.resolve('@prisma/config', { paths: [require.resolve('prisma/package.json')] });
-  const { deepmerge } = await import(require.resolve('deepmerge-ts', { paths: [prismaConfigRoot] }));
+  const { deepmerge } = await import(
+    require('node:url').pathToFileURL(require.resolve('deepmerge-ts', { paths: [prismaConfigRoot] })).href
+  );
   assert.deepEqual(deepmerge({ migrations: { path: 'a' }, earlyAccess: false }, { migrations: { seed: 'b' } }), {
     migrations: { path: 'a', seed: 'b' },
     earlyAccess: false,

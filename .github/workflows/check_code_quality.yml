@@ -14,6 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
+      redis-tctoken:
+        image: redis:7.4-alpine
+        ports: ['16782:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
       postgres:
         image: postgres:16-alpine
         env:
@@ -28,6 +34,7 @@ jobs:
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://evolution_test:local_ci_only@127.0.0.1:5432/evolution_test?connection_limit=64
       XMACNA_INBOX_INTEGRATION: '1'
+      XMACNA_TCTOKEN_REDIS_URL: redis://127.0.0.1:16782
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -35,9 +42,12 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run patch:xmacna-tctoken
+      - run: npm run verify:xmacna-tctoken
       - run: npm run db:generate
       - run: npm run lint:check
       - run: npm run test:xmacna-compat
+      - run: npm run test:xmacna-tctoken
       - run: npm run test:xmacna-inbox
       - name: Prepare isolated PostgreSQL schema
         run: npx prisma db push --schema prisma/postgresql-schema.prisma --skip-generate
