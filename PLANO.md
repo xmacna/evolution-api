@@ -1,5 +1,7 @@
 # TC token e logouts — issue elysium 1026
 
+CHECKPOINT_REBOOT, ordem do Lucca retransmitida por Vesper em 01/11, prompt 13:58Z: parar com segurança o que for próprio, commit por caminho/push na branch, atualizar HANDOFF.md e registrar ENTREGA CHECKPOINT_REBOOT com caminho e retomada SIM/NAO. Nenhum processo próprio em execução foi encontrado na consulta Windows; nada ficou no meio. Retomada SIM, condicionada às pendências/autorizações do HANDOFF.md, sem reinício automático de tarefas. O reboot fecha o pane; não fechar nem enviar mensagem externa.
+
 Fechamento solicitado por Vesper em 01/11 14:00Z para liberar memória: preservar git limpo/push, HANDOFF.md com cwd/branch/HEAD/sessão/retomada e pendências, e uma ENTREGA no general2 com caminho e HEAD. Não fechar o próprio pane. Handoff canônico de saída: `HANDOFF.md` na raiz deste checkout; imagem relacionada permanece sob ger-disparo-ativo-sol, sem presumir inclusão deste PR nela. Deploy aguarda OK escrito do Lucca e aviso ao Rafael; canário pendente, rollback da imagem ensaiado apenas offline.
 
 Regra vigente de Argos, 29/10 às 22:41Z, até segunda ordem: nenhum agente pareia, desconecta, faz logout ou lê QR de instância por script ou pelo Manager. Pareamento somente por uma pessoa, exclusivamente pelo Partenon, com Vesper avisado antes. Qualquer canário futuro também deve obedecer; os ensaios desta frente são offline, sem conta WhatsApp. Pausa de campanhas em lista é responsabilidade do ger-disparo-ativo-sol; não operar campanhas aqui.

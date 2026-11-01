@@ -1,14 +1,16 @@
 # Handoff — Evolution / TC token
 
-Fechamento solicitado por Vesper em 01/11/2026 14:00 UTC para liberar memória. Dono: wk-evolution-versao-sol; responsável: Vesper/Argos. O responsável fecha o pane depois de ler este arquivo.
+CHECKPOINT_REBOOT — ordem do Lucca retransmitida por Vesper em 01/11/2026, prompt 13:58Z. Dono: wk-evolution-versao-sol; responsável: Vesper/Argos. Não fechar o próprio pane; o reboot encerra a sessão. Sem mensagem externa.
+
+Trabalho a retomar depois do reboot: **SIM, condicionado a revisão/novo evento e às autorizações abaixo**. Não há execução local pela metade nem tarefa para reiniciar automaticamente. Consulta de processos Windows desta frente não encontrou render, servidor ou navegador de teste pelos caminhos do checkout, testes TC token ou porta 16782. Redis temporário já foi encerrado no ensaio anterior. Nenhum processo de outra frente foi parado.
 
 ## Checkout e retomada
 
 - cwd: `C:/Users/lucca/evolution-tctoken-1026`.
 - Repositório: `xmacna/evolution-api`.
 - Branch: `fix/tctoken-persistence-1026-20261029`, upstream `origin/fix/tctoken-persistence-1026-20261029`.
-- HEAD do candidato conferido antes do commit documental de fechamento: `998a75dd3b9c8db05bbcf19d65680f51f54d1889`.
-- HEAD de fechamento: consultar `git rev-parse HEAD`; o valor exato depois do commit e push está na ENTREGA em `C:/Users/lucca/argos/inbox/general2.ndjson`. O hash do próprio commit não pode ser embutido nele.
+- HEAD conferido antes deste checkpoint documental: `6770e3bff0278a0f3edafeee1baabcaabb5a3e69`. O candidato testado permanece o checkpoint `998a75dd3b9c8db05bbcf19d65680f51f54d1889`; os commits posteriores são documentação.
+- HEAD final pré-reboot: consultar `git rev-parse HEAD`; o valor exato depois do commit e push está na ENTREGA cujo texto começa com CHECKPOINT_REBOOT em `C:/Users/lucca/argos/inbox/general2.ndjson`. O hash do próprio commit não pode ser embutido nele.
 - ID real da sessão Codex, conferido em CODEX_SESSION_ID e CODEX_THREAD_ID: `01a18995-3615-7b53-a519-7dbb059f940e`.
 
 ```powershell
@@ -41,4 +43,4 @@ Rollback dessa frente relacionado à baseline `evolution-api-candidate@sha256:4a
 - **Vínculos, até segunda ordem:** nenhum agente pareia, desconecta, faz logout ou lê QR por script/Manager. Pareamento apenas por uma pessoa pelo Partenon, com Vesper avisado antes. A regra também vale para o canário. Campanhas em lista ficam com ger-disparo-ativo-sol.
 - **Histórico administrativo:** Argos/Rafael podem indicar fonte adicional dos segundos de 25/09 16:32 e 20/10 14:12. Retomar por evidência nova, sem polling.
 
-Este worker para no checkpoint documental. Vesper lê a ENTREGA e fecha o pane pelo rito; nenhum fechamento próprio será executado.
+Este worker para no checkpoint documental. Não há ação de produção autorizada na retomada automática. Vesper lê a ENTREGA; o reboot fecha o pane, sem fechamento próprio.
