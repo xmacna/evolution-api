@@ -1,5 +1,7 @@
 # TC token e logouts — issue elysium 1026
 
+Fechamento solicitado por Vesper em 01/11 14:00Z para liberar memória: preservar git limpo/push, HANDOFF.md com cwd/branch/HEAD/sessão/retomada e pendências, e uma ENTREGA no general2 com caminho e HEAD. Não fechar o próprio pane. Handoff canônico de saída: `HANDOFF.md` na raiz deste checkout; imagem relacionada permanece sob ger-disparo-ativo-sol, sem presumir inclusão deste PR nela. Deploy aguarda OK escrito do Lucca e aviso ao Rafael; canário pendente, rollback da imagem ensaiado apenas offline.
+
 Regra vigente de Argos, 29/10 às 22:41Z, até segunda ordem: nenhum agente pareia, desconecta, faz logout ou lê QR de instância por script ou pelo Manager. Pareamento somente por uma pessoa, exclusivamente pelo Partenon, com Vesper avisado antes. Qualquer canário futuro também deve obedecer; os ensaios desta frente são offline, sem conta WhatsApp. Pausa de campanhas em lista é responsabilidade do ger-disparo-ativo-sol; não operar campanhas aqui.
 
 Dono: wk-evolution-versao-sol. Responsável: Vesper/Argos.
@@ -24,4 +26,4 @@ Prova: rc14 original falha em quatro dos sete casos; candidato passa dez testes 
 
 AGUARDA: Argos/Rafael indicar eventual access/audit log histórico dos segundos solicitados, se existir fora das fontes examinadas. Não houve fonte suficiente para identificar o chamador; quatro famílias de código podem emitir a mesma mensagem de logout.
 
-Candidato em draft: https://github.com/xmacna/evolution-api/pull/7 . Resultado publicado e readback conferido: https://github.com/xmacna/elysium/issues/1026#issuecomment-6509599968 . ENTREGA registrada no general2, com recibos ISSUE-READBACK.json e ENTREGA-GENERAL2.json na pasta local da evidência. Checks locais aprovados; CI do PR permanece com o revisor até conclusão automática no GitHub.
+Candidato em draft: https://github.com/xmacna/evolution-api/pull/7 . Resultado publicado e readback conferido: https://github.com/xmacna/elysium/issues/1026#issuecomment-6509599968 . ENTREGA registrada no general2, com recibos ISSUE-READBACK.json e ENTREGA-GENERAL2.json na pasta local da evidência. Checks locais aprovados; os quatro checks GitHub do candidato também estão concluídos com sucesso, conferidos no fechamento de 01/11. Atualização documental de fechamento será enviada na mesma branch; nenhum build/teste adicional solicitado.
