@@ -26,3 +26,7 @@ Plano nominal: registrar baseline; usar Status de um contato de teste consentido
 Rollback do canário: parar apenas seu container e voltar à imagem base imutável com o mesmo volume próprio, sob dono do teste. Não existe rollback de produção nesta entrega porque não houve rollout. Rollout exige evidência real + revisão Rafael + GO Vesper, novo snapshot/rollback/watch.
 
 Provas privadas: C:/Users/lucca/argos/.local/lia-causa-raiz-20261106/{STATUS-ACK-RED.txt,STATUS-ACK-GREEN.txt,STATUS-ACK-IMAGE-BUILD.json}. Contexto remoto isolado `/tmp/xmacna-status-ack-image-20261106`, registro de build no mesmo diretório. Não declarar canário ou quatro ciclos concluídos.
+
+## Revisão preparada
+
+[Pacote nominal do canário](REVISAO-CANARIO.md): pré-condições, matriz, evidência mínima e rollback. Avaliador offline novo com8testes; nenhuma mudança no patch da imagem e nenhuma nova execução dos6verdes anteriores. Canário real continua pendente.
