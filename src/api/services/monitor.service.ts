@@ -397,22 +397,16 @@ export class WAMonitoringService {
 
   private removeInstance() {
     this.eventEmitter.on('remove.instance', async (instanceName: string) => {
-      try {
-        await this.waInstances[instanceName]?.sendDataWebhook(Events.REMOVE_INSTANCE, null);
+      await this.waInstances[instanceName]?.sendDataWebhook(Events.REMOVE_INSTANCE, null);
 
-        this.clearDelInstanceTime(instanceName);
+      this.clearDelInstanceTime(instanceName);
 
-        this.cleaningUp(instanceName);
-        this.cleaningStoreData(instanceName);
-      } finally {
-        this.logger.warn(`Instance "${instanceName}" - REMOVED`);
-      }
+      // The API must not release the name in memory before its persistent record is gone.
+      await this.cleaningUp(instanceName);
+      await this.cleaningStoreData(instanceName);
 
-      try {
-        delete this.waInstances[instanceName];
-      } catch (error) {
-        this.logger.error(error);
-      }
+      delete this.waInstances[instanceName];
+      this.logger.warn(`Instance "${instanceName}" - REMOVED`);
     });
     this.eventEmitter.on('logout.instance', async (instanceName: string) => {
       try {
