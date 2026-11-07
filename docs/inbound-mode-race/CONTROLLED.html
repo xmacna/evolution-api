@@ -1,0 +1,43 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Controlled PostgreSQL mode-race diagnosis</title>
+<style>
+:root{color-scheme:dark;--bg:#0c1422;--panel:#132238;--ink:#edf4ff;--muted:#adbed4;--line:#29415d;--accent:#6ce0c3}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,Segoe UI,sans-serif}
+main{max-width:1120px;margin:auto;padding:32px 24px 80px}header{padding:30px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(125deg,#18344c,#19233b)}
+.eyebrow{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:2px}header h1{font-size:clamp(26px,4vw,44px);line-height:1.15;margin:14px 0}header p{color:var(--muted);margin:10px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:24px 0}.card{background:var(--panel);padding:18px;border-radius:15px;border:1px solid var(--line)}.card strong{font-size:25px;display:block}.card small{color:var(--muted)}
+article{background:#101c2d;border:1px solid var(--line);border-radius:18px;padding:26px 30px}article h1{font-size:28px}h2{font-size:23px;margin-top:36px;padding-top:18px;border-top:1px solid var(--line)}h3{font-size:19px}a{color:#80d9ff;overflow-wrap:anywhere}a:hover{color:var(--accent)}
+p,li{overflow-wrap:anywhere}li{margin-bottom:9px}code{font-family:Consolas,monospace;font-size:.88em;background:#1d3048;border-radius:5px;padding:2px 5px}pre{background:#08101d;border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;line-height:1.5}pre code{background:none;padding:0}
+table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;margin:20px 0}th,td{padding:12px 15px;text-align:left;border-bottom:1px solid var(--line)}th{background:#1b3049}tr:nth-child(even){background:#142238}blockquote{border-left:4px solid var(--accent);padding:6px 18px;margin:20px 0;background:var(--panel)}footer{color:var(--muted);font-size:12px;margin-top:22px;overflow-wrap:anywhere}
+@media(max-width:600px){main{padding:16px 12px 40px}article{padding:16px}header{padding:22px}}@media print{body{background:white;color:#17283c}main{max-width:none}header,article,.card{background:white;border-color:#aaa}a{color:#134a80}pre,code,th,tr:nth-child(even){background:#f1f4f7;color:#17283c}}
+</style><main><header><div class="eyebrow">NEX · EVOLUTION · RODADA 2</div>
+<h1>🛠️ Controlled PostgreSQL mode-race diagnosis</h1><p>Contratos verificáveis · testes offline · continuidade</p>
+<a href="CONTROLLED.md">📄 Fonte canônica em Markdown</a></header>
+<div class="cards"><div class="card"><strong>🧪 Prova</strong><small>Resultados e limites no relato canônico</small></div>
+<div class="card"><strong>🔒 Isolado</strong><small>Sem cliente, produção ou serviços</small></div>
+<div class="card"><strong>📬 Revisão</strong><small>Solicitação no SHA final, sem autoaprovação</small></div></div>
+<article><h1>Controlled PostgreSQL mode-race diagnosis</h1>
+<p>Origin: <a href="https://github.com/xmacna/evolution-api/pull/11#issuecomment-6712969805">PR11 AJUSTES</a>, following the <a href="https://github.com/xmacna/evolution-api/pull/14">limited PR14 diagnostic</a>. The original run failed while creating an inbound receipt, but its assertion retained only the error string, not the Prisma code, constructor identity or attempt number. The original CI artifact was read without requesting a rerun.</p>
+<h2>Questions and hypotheses</h2>
+<ol>
+<li>A real conflict might have a code/constructor identity that the runtime classifier does not recognize. Prediction: the controlled failed transaction records a code other than P2034 or <code>instanceof</code> false, and claim rejects before retry.</li>
+<li>All eight retries might be exhausted. Prediction: the failing role reaches attempt eight with real transaction conflicts, rather than rejecting the first recognized conflict. Two controlled single-transition cases cannot establish or exclude sustained multi-writer contention.</li>
+<li>The first stale snapshot is handled as intended. Prediction: the loser produces exactly one recognized native P2034, retries, then either bypasses off mode or blocks the downgrade on the committed receipt. This result would refute hypothesis1 only for these two interleavings, not diagnose the original run.</li>
+</ol>
+<h2>Deterministic fixture</h2>
+<p>Two new cases run the actual <code>PrismaInboundInbox.claim</code> and <code>transitionInboundMode</code> against the existing disposable PostgreSQL16 CI service, preserving Serializable transaction options, eight retries, all original assertions and runtime source bytes.</p>
+<ul>
+<li>Both first snapshots are acquired: claim reads enforce; downgrade reads enforce and an empty incomplete-receipt count.</li>
+<li>Claim-first: release claim and wait for its committed receipt, then release downgrade. The downgrade must encounter the actual database conflict and retry into the blocked-mode error.</li>
+<li>Downgrade-first: release downgrade and wait for off to commit, then release claim. The claim must encounter the actual database conflict and retry into off-mode bypass, without creating a receipt.</li>
+</ul>
+<p>Only the dedicated test repositories wrap transactions. The wrappers gate after actual first reads, record the exact thrown error and rethrow the same object. They never synthesize a conflict, replace SQL/results, relax isolation, change timeout/retry options or instrument the existing stochastic test. Promise barriers have bounded failure deadlines and unconditional release/settlement before deleting only the synthetic instance's rows. No timing sleep chooses the winner. The original test remains unchanged, including its claim-must-not-throw assertion.</p>
+<p>The test requires exactly one native P2034 from the losing role at attempt1, recognized by Prisma identity, and exactly two attempts for that role. Structured <code>[mode-race-interleaving]</code> diagnostics publish role, attempt, code, constructor and instanceof. These are permanent bounded test evidence, not runtime logs.</p>
+<h2>Execution and scope</h2>
+<pre><code class="language-sh">npm run test:xmacna-inbox:postgres
+npm run build
+</code></pre>
+<p>The package script includes the new file after the two existing PostgreSQL test files with <code>--test-concurrency=1</code>. CI was inspected: PR quality uses an ephemeral PostgreSQL service/schema, Node24, lint/unit/integration/build; security performs static analysis. No release/deploy workflow is invoked. Remote outcomes and exact SHA are recorded in PR comments after completion; this initial diagnostic does not declare a green run, reproduction or fix.</p>
+<p>No runtime, schema, isolation, retry, tenant scope or dependency change. No local PostgreSQL/Docker or real account/service/customer access. This is Evolution inbox work, independent of Partenon#1066. A passing controlled test does not retroactively approve PR11 or transfer a build from another SHA. If the original exception is not reproduced, retain that limitation and continue independent executable work.</p>
+<p><a href="CONTROLLED.html">HTML</a> · <a href="../../plans/nex-evolution/PLANO.md">Plan</a> · <a href="../../plans/nex-evolution/PLANO.html">Plan HTML</a>.</p></article><footer>Render autocontido. O Markdown prevalece em caso de divergência.<br>
+SHA256 da fonte: 63c08f2013334c3b630b73286a36cf5eb696e4ef18e3959b806b3a472885a2ca</footer></main></html>
