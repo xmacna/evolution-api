@@ -145,7 +145,7 @@ import mimeTypes from 'mime-types';
 import NodeCache from 'node-cache';
 import cron from 'node-cron';
 import { release } from 'os';
-import { join } from 'path';
+import { posix } from 'path';
 import P from 'pino';
 import qrcode, { QRCodeToDataURLOptions } from 'qrcode';
 import qrcodeTerminal from 'qrcode-terminal';
@@ -1891,7 +1891,7 @@ export class BaileysStartupService extends ChannelStartupService {
                           upload: async (media) => {
                             const { buffer, mediaType, fileName, size } = media;
                             const mimetype = mimeTypes.lookup(fileName).toString();
-                            const fullName = join(
+                            const fullName = posix.join(
                               `${this.instance.id}`,
                               received.key.remoteJid,
                               mediaType,
@@ -3050,7 +3050,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
               const mimetype = mimeTypes.lookup(fileName).toString();
 
-              const fullName = join(
+              const fullName = posix.join(
                 `${this.instance.id}`,
                 messageRaw.key.remoteJid,
                 `${messageRaw.key.id}`,

@@ -1,0 +1,82 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>🗂️ PR15 — quatro produtores S3 corrigidos após AJUSTES</title><style>
+:root{color-scheme:dark;--bg:#090d19;--card:#111a2d;--ink:#eaf0ff;--muted:#afbed6;--line:#2b3a57;--cyan:#58dfd0;--violet:#bba2ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#222040 0,transparent 55%),var(--bg);color:var(--ink);font:16px/1.7 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:48px 28px 80px}header{padding:28px 32px;background:linear-gradient(125deg,#243656,#292044);border:1px solid #52628b;border-radius:22px;margin-bottom:32px}.eyebrow{color:var(--cyan);letter-spacing:.17em;font-size:12px;font-weight:800;text-transform:uppercase}.hero{font-size:clamp(28px,5vw,49px);line-height:1.12;margin:12px 0 18px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:24px}.stat{border:1px solid #51617f;padding:14px;border-radius:12px;background:#0d182870}.stat b{display:block;font-size:27px;color:var(--cyan)}.stat span{font-size:13px;color:#ced7ea}h1{font-size:30px;line-height:1.3}h2{font-size:23px;line-height:1.4;border-top:1px solid var(--line);padding-top:30px;margin-top:40px;color:var(--violet)}h3{font-size:19px;color:var(--cyan)}p,li{color:var(--muted)}strong{color:var(--ink)}a{color:var(--cyan);text-underline-offset:4px}table{display:block;overflow:auto;border-collapse:collapse;width:100%;margin:24px 0;font-size:14px}th,td{border:1px solid var(--line);padding:13px 15px;text-align:left;vertical-align:top}th{background:#233150;color:var(--ink)}td{background:#111a2dcc;color:var(--muted)}tr:nth-child(even) td{background:#17223ccc}code{font:13px/1.6 ui-monospace,Consolas,monospace;color:#bde6ff;overflow-wrap:anywhere}pre{padding:20px;border-radius:12px;border:1px solid var(--line);background:#050b15;overflow:auto}pre code{white-space:pre}blockquote{margin:24px 0;border-left:4px solid var(--cyan);padding:10px 22px;background:var(--card)}.source{margin:0 0 30px;color:var(--muted);font-size:13px}.badge{display:inline-block;border:1px solid #6b5b29;background:#4d3b153d;color:#ffdb85;padding:4px 12px;border-radius:99px;font-size:12px}footer{margin-top:50px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}@media(max-width:660px){main{padding:24px 16px}.grid{grid-template-columns:1fr}header{padding:24px}th,td{min-width:130px}h1{font-size:25px}}@media print{body{background:white;color:#182035}main{max-width:none;padding:0}header,.stat,th,td{background:#f1f4fa;color:#182035}p,li{color:#24344d}h2,strong{color:#182035}pre{background:#f1f4fa}code{color:#24344d}}
+</style></head><body><main><header><div class="eyebrow">Nex · Rodada5 · Evolution15 · AJUSTES</div><div class="hero">Do produtor à chave S3 🗂️</div><span class="badge">Revisão anterior: AJUSTES · nova revisão pendente</span><div class="grid"><div class="stat"><b>4 → 0</b><span>Falhas dos produtores no Windows</span></div><div class="stat"><b>8 / 8</b><span>Expressões reais · dois caminhos de plataforma</span></div><div class="stat"><b>0 rede</b><span>Backend/SDK reais · transporte falso</span></div></div></header><p class="source">📄 Fonte canônica: <a href="AJUSTES-RODADA5.md">AJUSTES-RODADA5.md</a>. Render da mesma fonte, CSS inline, sem CDN.</p><article><h1>🗂️ PR15 — quatro produtores S3 corrigidos após AJUSTES</h1>
+<p>Origem: <a href="https://github.com/xmacna/evolution-api/pull/15#issuecomment-6713483817">parecer AJUSTES</a>
+no SHA <code>6fd5c1c3528c3eb3b41e06df3030a932cce09f18</code>, corrigido pelo revisor no mesmo comentário
+em2026-11-07T21:53:41Z, e ordem posterior do ger-nex-sol. <strong>APROVA anterior revogado</strong>.
+Rodada5, terceiro item; gpt-6.1-sol high, sem subagentes. Branch própria da PR15 preservada.</p>
+<h2>✅ Resultado do caminho produtor→backend</h2>
+<table>
+<thead>
+<tr>
+<th>Matriz: quatro expressões de produção</th>
+<th style="text-align: right;">Antes</th>
+<th style="text-align: right;">Depois</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows, chaves/URLs corretas</td>
+<td style="text-align: right;">0 / 4</td>
+<td style="text-align: right;"><strong>4 / 4</strong></td>
+</tr>
+<tr>
+<td>Linux, chaves/URLs corretas</td>
+<td style="text-align: right;">4 / 4</td>
+<td style="text-align: right;"><strong>4 / 4</strong></td>
+</tr>
+<tr>
+<td>Total</td>
+<td style="text-align: right;">4 PASS,4 FAIL</td>
+<td style="text-align: right;"><strong>8 PASS,0 FAIL</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Na base, valores nativos do Windows chegavam ao backend como
+<code>fixture-instance\fixture-jid\image\fixture.jpg</code>; posix.join no backend preservava
+essas barras existentes. O presigner real produzia <code>%5C</code>. Era um defeito funcional
+dos chamadores, apesar dos sete testes isolados e da CI Linux verdes.</p>
+<h2>🛠️ Correção e alcance</h2>
+<p>Três imports <code>join</code> de path passam a <code>posix</code>; quatro inicializadores <code>fullName</code> usam
+<code>posix.join</code>: Meta, Evolution e Baileys recebido/enviado. Inventário dos bindings
+confirma que eram os únicos usos daquele join importado e todos alimentam S3;
+nenhuma operação de arquivo local foi substituída. Arrays/string <code>.join</code> permanecem iguais.
+O backend já corrigido não muda. API, metadata, MIME, tamanho, nome/timestamp/id e persistência
+de fullName mantêm o fluxo existente. Não há migração de objetos antigos com backslash.</p>
+<p><code>test:xmacna-inbox</code> inclui agora <code>xmacna-s3-producers.test.ts</code>, para que a CI exercite
+o novo contrato. O teste lê os três arquivos via AST TypeScript, exige contagens1/1/2
+de produtores e extrai os inicializadores reais e seus imports de path. Executa cada
+expressão com <code>path.win32</code> e <code>path.posix</code> no contexto de mídia sintético, sem importar
+as classes de canal ou inicializar provedores WhatsApp.</p>
+<p>O valor resultante segue ao <strong>backend real + S3Client/PutObjectCommand/presigner reais</strong>.
+Apenas send é falso; assinatura local com credencial fictícia. Asserts cobrem fullName,
+chave, Body/ContentLength/ContentType, pathname sem <code>%5C</code>, expiração60s e assinatura.
+HTTP/TCP bloqueados pelo preload offline existente; nenhuma chamada a AWS ou bucket.
+As duas implementações de path foram exercitadas no host Windows; não se confunde isso
+com uma execução nativa Linux, que permanece na CI.</p>
+<h2>🧪 Checks e preservação de prova</h2>
+<ul>
+<li><strong>8/8 casos novos PASS</strong>, zero skip. Baseline4 PASS/4 FAIL antes da alteração.</li>
+<li>Lint focado nos três serviços, typecheck completo e builds CJS/ESM: exit0,
+  detalhes em <a href="prova-rodada5.json">prova-rodada5.json</a> e logs brutos versionados.</li>
+<li>Formatação aplicada antes do verde. A prova original do backend/testes/preload/n8n
+  conserva hashes LF idênticos; não foram repetidos os82 testes anteriores localmente.
+  O delta dos produtores justifica novo typecheck/build e nova execução da CI no novo SHA.</li>
+<li>Node24.22.2, heap768MiB, BelowNormal, UV/V8/GOMAXPROCS1, lock global exclusivo,
+  piso commit1,5GiB. Sem install, Prisma, DB ou mutação das dependências reutilizadas.</li>
+</ul>
+<p>Reprodução com dependências instaladas, em shell com limites/recurso já reservados:</p>
+<pre><code class="language-powershell">node --require ./test/helpers/s3-offline-preload.cjs --import tsx --test --test-concurrency=1 test/xmacna-s3-producers.test.ts
+</code></pre>
+<p><code>S3_ENABLED=false</code>, <code>AWS_EC2_METADATA_DISABLED=true</code> e <code>DATABASE_PROVIDER=postgresql</code>
+foram definidos no runner. Comandos/versões/recursos e hashes exatos estão no manifesto.</p>
+<h2>🚦 Revisão e limites históricos</h2>
+<p>Os82 testes, builds e CI anteriores documentam o SHA6fd5c1c e o contrato isolado;
+<strong>não aprovam os produtores nem este novo SHA por herança</strong>. O documento anterior
+PLANO.md/.html e seu manifesto são histórico preservado; este par descreve o ajuste
+completo solicitado pelo parecer. Não houve relaxamento de asserts ou troca dos produtores
+por strings já normalizadas. A sonda AST cobre composição→S3, não mensagens/integrações reais.</p>
+<p>Solicitar nova revisão independente no SHA final. CI do novo candidato será registrada
+separadamente no comentário de prova, sem alterar código/repetir testes para obter verde.
+Sem AWS real, credencial real, migração de objetos, serviço, cliente, PC/Nyx, merge ou deploy.</p></article><footer>🔒 Sem AWS real, objeto antigo migrado, cliente, merge ou deploy.</footer></main></body></html>

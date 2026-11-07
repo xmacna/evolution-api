@@ -1,0 +1,148 @@
+TAP version 13
+# [Evolution API]  34756 - Sat Nov 07 2026 22:13:44   ERROR  [S3 Service] [object] Error: AccessDenied
+#     at TestContext.<anonymous> (C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-storage.test.ts:82:16)
+#     at Test.runInAsyncScope (node:async_hooks:227:14)
+#     at Test.run (node:internal/test_runner/test:1402:25)
+#     at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+#     at Test.postRun (node:internal/test_runner/test:1542:19)
+#     at Test.run (node:internal/test_runner/test:1467:12)
+#     at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+# [Evolution API]  34756 - Sat Nov 07 2026 22:13:44   ERROR  [S3 Service] [object] Error: AccessDenied
+#     at TestContext.<anonymous> (C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-storage.test.ts:82:16)
+#     at Test.runInAsyncScope (node:async_hooks:227:14)
+#     at Test.run (node:internal/test_runner/test:1402:25)
+#     at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+#     at Test.postRun (node:internal/test_runner/test:1542:19)
+#     at Test.run (node:internal/test_runner/test:1467:12)
+#     at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+# Subtest: AWS endpoints use virtual-host style; anything else is path style (minio parity)
+ok 1 - AWS endpoints use virtual-host style; anything else is path style (minio parity)
+  ---
+  duration_ms: 0.8516
+  type: 'test'
+  ...
+# Subtest: uploadFile stores under evolution-api/ with Content-Type as header and the rest as metadata
+not ok 2 - uploadFile stores under evolution-api/ with Content-Type as header and the rest as metadata
+  ---
+  duration_ms: 2.5333
+  type: 'test'
+  location: 'C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-storage.test.ts:58:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'evolution-api\\inst\\audio\\x.ogg'
+    - 'evolution-api/inst/audio/x.ogg'
+                    ^
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'evolution-api/inst/audio/x.ogg'
+  actual: 'evolution-api\\inst\\audio\\x.ogg'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Lucca Galaxy Book\work\nex-night-20261107\evolution-s3-1070-nex\test\xmacna-s3-storage.test.ts:67:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: uploadTempFile keeps the caller folder; streams pass ContentLength through
+not ok 3 - uploadTempFile keeps the caller folder; streams pass ContentLength through
+  ---
+  duration_ms: 0.5762
+  type: 'test'
+  location: 'C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-storage.test.ts:73:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'tmp\\y.bin'
+    - 'tmp/y.bin'
+          ^
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'tmp/y.bin'
+  actual: 'tmp\\y.bin'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Lucca Galaxy Book\work\nex-night-20261107\evolution-s3-1070-nex\test\xmacna-s3-storage.test.ts:77:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: upload and delete errors are logged and returned, never thrown (caller contract)
+not ok 4 - upload and delete errors are logged and returned, never thrown (caller contract)
+  ---
+  duration_ms: 3.1481
+  type: 'test'
+  location: 'C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-storage.test.ts:81:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'evolution-api\\a'
+    - 'evolution-api/a'
+                    ^
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'evolution-api/a'
+  actual: 'evolution-api\\a'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Lucca Galaxy Book\work\nex-night-20261107\evolution-s3-1070-nex\test\xmacna-s3-storage.test.ts:88:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# [Evolution API]  34756 - Sat Nov 07 2026 22:13:44   INFO  [S3 Service] [string] S3 Bucket evolution-media-test - ON
+# [Evolution API]  34756 - Sat Nov 07 2026 22:13:44   INFO  [S3 Service] [string] S3 Bucket evolution-media-test - ON
+# Subtest: getObjectUrl presigns evolution-api/<file> for 7 days by default and caps custom expiry at 7 days
+not ok 5 - getObjectUrl presigns evolution-api/<file> for 7 days by default and caps custom expiry at 7 days
+  ---
+  duration_ms: 28.1087
+  type: 'test'
+  location: 'C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-storage.test.ts:91:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '/evolution-api%5Cinst%5Cimg.jpg'
+    - '/evolution-api/inst/img.jpg'
+                     ^
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '/evolution-api/inst/img.jpg'
+  actual: '/evolution-api%5Cinst%5Cimg.jpg'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Lucca Galaxy Book\work\nex-night-20261107\evolution-s3-1070-nex\test\xmacna-s3-storage.test.ts:95:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: createBucket: existing bucket only gets the public-read policy; missing bucket is created first
+ok 6 - createBucket: existing bucket only gets the public-read policy; missing bucket is created first
+  ---
+  duration_ms: 1.0467
+  type: 'test'
+  ...
+# Subtest: disabled storage: every function is a no-op returning undefined
+ok 7 - disabled storage: every function is a no-op returning undefined
+  ---
+  duration_ms: 0.1659
+  type: 'test'
+  ...
+# Error: A resource generated asynchronous activity after the test ended. This activity created the error "Error: NEX-OFFLINE-NETWORK-DENIED" which triggered an unhandledRejection event, caught by the test runner.
+1..7
+# Error: A resource generated asynchronous activity after the test ended. This activity created the error "Error: NEX-OFFLINE-NETWORK-DENIED" which triggered an unhandledRejection event, caught by the test runner.
+# tests 7
+# suites 0
+# pass 3
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 682.4326

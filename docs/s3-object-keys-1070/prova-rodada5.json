@@ -1,0 +1,359 @@
+{
+  "base_sha": "6fd5c1c3528c3eb3b41e06df3030a932cce09f18",
+  "review": "https://github.com/xmacna/evolution-api/pull/15#issuecomment-6713483817",
+  "review_status": "AJUSTES; APROVA revoked at same comment",
+  "baseline": {
+    "tests": 8,
+    "pass": 4,
+    "fail": 4,
+    "skipped": 0
+  },
+  "candidate": {
+    "tests": 8,
+    "pass": 8,
+    "fail": 0,
+    "skipped": 0
+  },
+  "source_sha256_lf": {
+    "src/api/integrations/channel/meta/whatsapp.business.service.ts": "d34eabb137fab7ec45d9602d0399facee76bc6917183f1cf69e99b7c7aee339d",
+    "src/api/integrations/channel/evolution/evolution.channel.service.ts": "f4d123416df7b43ca3f4a12fbafb5a0e9ab79cd6b2a9bb7ddee1af664b5611ba",
+    "src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts": "a779aa863e7d4dc4c2759aea5b7eccfd559a46e05ef089accbf1450ec1164b41",
+    "test/xmacna-s3-producers.test.ts": "d674f63e46401a9cf22ef0f4d8aad4f4b3cdd52e185facd5f8f759f7148d878a",
+    "package.json": "b120f4bbd4da2dac5eff7da3573de165ed9e577fa5bb85604962e2744ccfede3"
+  },
+  "unchanged_original_contract": {
+    "test/helpers/s3-offline-preload.cjs": true,
+    "test/xmacna-n8n-individual-service.test.ts": true,
+    "src/api/integrations/storage/s3/libs/minio.server.ts": true,
+    "test/xmacna-s3-storage.test.ts": true
+  },
+  "receipts": {
+    "producer-red": {
+      "ts": "2026-11-07T22:05:31.285887+00:00",
+      "mode": "producer-red",
+      "commands": [
+        {
+          "name": "producer-tests",
+          "command": [
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+            "--import",
+            "tsx",
+            "--test",
+            "--test-reporter=tap",
+            "--test-concurrency=1",
+            "test/xmacna-s3-producers.test.ts"
+          ],
+          "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+          "exit_code": 1,
+          "seconds": 23.172,
+          "sha256": "6539ff576c1cde9d130a7f081df01794cefcc14534864f949a00719f0085a4e8"
+        }
+      ],
+      "lock": {
+        "agent": "nex-serie-trilha-sol",
+        "pid": 33368,
+        "ts": "2026-11-07T22:05:30.1521337Z",
+        "purpose": "redis-640-offline"
+      },
+      "resources": {
+        "free_commit_gib": 2.092,
+        "priority": "16384",
+        "numeric_threads": 1
+      }
+    },
+    "format-write": {
+      "ts": "2026-11-07T22:07:05.466293+00:00",
+      "mode": "format-write",
+      "commands": [
+        {
+          "name": "format-write",
+          "command": [
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+            "node_modules/prettier/bin/prettier.cjs",
+            "--write",
+            "src/api/integrations/channel/meta/whatsapp.business.service.ts",
+            "src/api/integrations/channel/evolution/evolution.channel.service.ts",
+            "src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts",
+            "test/xmacna-s3-producers.test.ts"
+          ],
+          "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+          "exit_code": 0,
+          "seconds": 1.64,
+          "sha256": "a54932bfe2d83f3525d57fbb200d5c65c27fe0cb4cf643b5135181fc9ad7a32f"
+        }
+      ],
+      "lock": {
+        "agent": "nex-serie-trilha-sol",
+        "pid": 6900,
+        "ts": "2026-11-07T22:07:05.1877147Z",
+        "purpose": "redis-640-offline"
+      },
+      "resources": {
+        "free_commit_gib": 2.27,
+        "priority": "16384",
+        "numeric_threads": 1
+      }
+    },
+    "format-test": {
+      "ts": "2026-11-07T22:08:30.755150+00:00",
+      "mode": "format-test",
+      "commands": [
+        {
+          "name": "format-test",
+          "command": [
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+            "node_modules/prettier/bin/prettier.cjs",
+            "--write",
+            "--ignore-path",
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\empty-prettier-ignore",
+            "test/xmacna-s3-producers.test.ts"
+          ],
+          "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+          "exit_code": 0,
+          "seconds": 0.312,
+          "sha256": "52f48718c09abfb410490e6a6181f562f57b07212e87a86733125d855321c958"
+        }
+      ],
+      "lock": {
+        "agent": "nex-serie-trilha-sol",
+        "pid": 34996,
+        "ts": "2026-11-07T22:08:30.5270975Z",
+        "purpose": "redis-640-offline"
+      },
+      "resources": {
+        "free_commit_gib": 2.558,
+        "priority": "16384",
+        "numeric_threads": 1
+      }
+    },
+    "producer-green": {
+      "ts": "2026-11-07T22:08:28.513106+00:00",
+      "mode": "producer-green",
+      "commands": [
+        {
+          "name": "producer-tests",
+          "command": [
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+            "--import",
+            "tsx",
+            "--test",
+            "--test-reporter=tap",
+            "--test-concurrency=1",
+            "test/xmacna-s3-producers.test.ts"
+          ],
+          "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+          "exit_code": 0,
+          "seconds": 1.922,
+          "sha256": "3fdd8ef1b307916bfa0c2a3a86a367b4df38270f460cf97748d3e31d7dfade65"
+        }
+      ],
+      "lock": {
+        "agent": "nex-serie-trilha-sol",
+        "pid": 26968,
+        "ts": "2026-11-07T22:08:28.1973967Z",
+        "purpose": "redis-640-offline"
+      },
+      "resources": {
+        "free_commit_gib": 2.476,
+        "priority": "16384",
+        "numeric_threads": 1
+      }
+    },
+    "checks": {
+      "ts": "2026-11-07T22:09:16.176735+00:00",
+      "mode": "checks",
+      "commands": [
+        {
+          "name": "lint-target",
+          "command": [
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+            "node_modules/eslint/bin/eslint.js",
+            "src/api/integrations/channel/meta/whatsapp.business.service.ts",
+            "src/api/integrations/channel/evolution/evolution.channel.service.ts",
+            "src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts"
+          ],
+          "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+          "exit_code": 0,
+          "seconds": 143.812,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "typecheck",
+          "command": [
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+            "node_modules/typescript/bin/tsc",
+            "--noEmit"
+          ],
+          "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+          "exit_code": 0,
+          "seconds": 13.812,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "build-cjs",
+          "command": [
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+            "node_modules/tsup/dist/cli-default.js",
+            "--format",
+            "cjs"
+          ],
+          "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+          "exit_code": 0,
+          "seconds": 14.594,
+          "sha256": "192fb4c390080059b1b120fe7bb4b53e728059fb0f64e45d5cfb769cda544f96"
+        },
+        {
+          "name": "build-esm",
+          "command": [
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+            "node_modules/tsup/dist/cli-default.js",
+            "--format",
+            "esm",
+            "--no-clean"
+          ],
+          "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+          "exit_code": 0,
+          "seconds": 9.641,
+          "sha256": "ca675e575992e478cc9f4c4b212dc7ab49c4420b7a6752af80505e01d71dafd6"
+        }
+      ],
+      "lock": {
+        "agent": "nex-serie-trilha-sol",
+        "pid": 32192,
+        "ts": "2026-11-07T22:09:15.9318327Z",
+        "purpose": "redis-640-offline"
+      },
+      "resources": {
+        "free_commit_gib": 2.663,
+        "priority": "16384",
+        "numeric_threads": 1
+      }
+    }
+  },
+  "logs": [
+    {
+      "file": "evidence/r5-producer-red-producer-tests.txt",
+      "name": "producer-tests",
+      "command": [
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "test/xmacna-s3-producers.test.ts"
+      ],
+      "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+      "exit_code": 1,
+      "seconds": 23.172,
+      "sha256": "6539ff576c1cde9d130a7f081df01794cefcc14534864f949a00719f0085a4e8"
+    },
+    {
+      "file": "evidence/r5-format-write-format-write.txt",
+      "name": "format-write",
+      "command": [
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+        "node_modules/prettier/bin/prettier.cjs",
+        "--write",
+        "src/api/integrations/channel/meta/whatsapp.business.service.ts",
+        "src/api/integrations/channel/evolution/evolution.channel.service.ts",
+        "src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts",
+        "test/xmacna-s3-producers.test.ts"
+      ],
+      "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+      "exit_code": 0,
+      "seconds": 1.64,
+      "sha256": "a54932bfe2d83f3525d57fbb200d5c65c27fe0cb4cf643b5135181fc9ad7a32f"
+    },
+    {
+      "file": "evidence/r5-format-test-format-test.txt",
+      "name": "format-test",
+      "command": [
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+        "node_modules/prettier/bin/prettier.cjs",
+        "--write",
+        "--ignore-path",
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\empty-prettier-ignore",
+        "test/xmacna-s3-producers.test.ts"
+      ],
+      "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+      "exit_code": 0,
+      "seconds": 0.312,
+      "sha256": "52f48718c09abfb410490e6a6181f562f57b07212e87a86733125d855321c958"
+    },
+    {
+      "file": "evidence/r5-producer-green-producer-tests.txt",
+      "name": "producer-tests",
+      "command": [
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "test/xmacna-s3-producers.test.ts"
+      ],
+      "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+      "exit_code": 0,
+      "seconds": 1.922,
+      "sha256": "3fdd8ef1b307916bfa0c2a3a86a367b4df38270f460cf97748d3e31d7dfade65"
+    },
+    {
+      "file": "evidence/r5-checks-lint-target.txt",
+      "name": "lint-target",
+      "command": [
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+        "node_modules/eslint/bin/eslint.js",
+        "src/api/integrations/channel/meta/whatsapp.business.service.ts",
+        "src/api/integrations/channel/evolution/evolution.channel.service.ts",
+        "src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts"
+      ],
+      "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+      "exit_code": 0,
+      "seconds": 143.812,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "evidence/r5-checks-typecheck.txt",
+      "name": "typecheck",
+      "command": [
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit"
+      ],
+      "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+      "exit_code": 0,
+      "seconds": 13.812,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "evidence/r5-checks-build-cjs.txt",
+      "name": "build-cjs",
+      "command": [
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+        "node_modules/tsup/dist/cli-default.js",
+        "--format",
+        "cjs"
+      ],
+      "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+      "exit_code": 0,
+      "seconds": 14.594,
+      "sha256": "192fb4c390080059b1b120fe7bb4b53e728059fb0f64e45d5cfb769cda544f96"
+    },
+    {
+      "file": "evidence/r5-checks-build-esm.txt",
+      "name": "build-esm",
+      "command": [
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+        "node_modules/tsup/dist/cli-default.js",
+        "--format",
+        "esm",
+        "--no-clean"
+      ],
+      "cwd": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex",
+      "exit_code": 0,
+      "seconds": 9.641,
+      "sha256": "ca675e575992e478cc9f4c4b212dc7ab49c4420b7a6752af80505e01d71dafd6"
+    }
+  ]
+}
