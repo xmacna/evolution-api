@@ -27,7 +27,13 @@ npm run test:xmacna-inbox:postgres
 npm run build
 ```
 
-The package script includes the new file after the two existing PostgreSQL test files with `--test-concurrency=1`. CI was inspected: PR quality uses an ephemeral PostgreSQL service/schema, Node24, lint/unit/integration/build; security performs static analysis. No release/deploy workflow is invoked. Remote outcomes and exact SHA are recorded in PR comments after completion; this initial diagnostic does not declare a green run, reproduction or fix.
+The package script includes the new file after the two existing PostgreSQL test files with `--test-concurrency=1`. CI was inspected: PR quality uses an ephemeral PostgreSQL service/schema, Node24, lint/unit/integration/build; security performs static analysis. No release/deploy workflow is invoked.
+
+## Observed result and bounded conclusion
+
+[Quality run42417452433](https://github.com/xmacna/evolution-api/actions/runs/42417452433), source commit `6538a080e9ceed5547648f8a6310013080e90cbf`: full quality/PG/build PASS, including both controlled cases. Claim-first produced one native P2034 from downgrade attempt1, recognized by `PrismaClientKnownRequestError` identity; attempt2 raised the expected `InboundModeTransitionBlockedError` with one incomplete receipt. Claim used one attempt, downgrade two. Downgrade-first produced one native recognized P2034 from claim attempt1; claim attempt2 bypassed off mode with dispatch preserved and zero receipts. Downgrade used one attempt, claim two.
+
+Hypothesis1 was not observed in these interleavings. Hypothesis2 (eight attempts exhausted under other contention) is not established or excluded. Hypothesis3 matches the measured cases. The original PR11 rejection remains **unreproduced and unexplained**; these results do not fix or approve PR11. No runtime change is justified by them. The old test and runtime are byte-identical to the base. Final documentation-only commit/check results and independent review requests are recorded in PR comments; no same-SHA CI rerun was requested.
 
 No runtime, schema, isolation, retry, tenant scope or dependency change. No local PostgreSQL/Docker or real account/service/customer access. This is Evolution inbox work, independent of Partenon#1066. A passing controlled test does not retroactively approve PR11 or transfer a build from another SHA. If the original exception is not reproduced, retain that limitation and continue independent executable work.
 
