@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Await instance deletion before reporting success</title><style>
+:root{color-scheme:dark;--bg:#0c1422;--panel:#132238;--ink:#edf4ff;--muted:#adbed4;--line:#29415d;--accent:#6ce0c3}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,Segoe UI,sans-serif}
+main{max-width:1120px;margin:auto;padding:32px 24px 80px}header{padding:30px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(125deg,#18344c,#19233b)}
+.eyebrow{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:2px}header h1{font-size:clamp(26px,4vw,44px);line-height:1.15;margin:14px 0}header p{color:var(--muted);margin:10px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:24px 0}.card{background:var(--panel);padding:18px;border-radius:15px;border:1px solid var(--line)}.card strong{font-size:25px;display:block}.card small{color:var(--muted)}
+article{background:#101c2d;border:1px solid var(--line);border-radius:18px;padding:26px 30px}article h1{font-size:28px}h2{font-size:23px;margin-top:36px;padding-top:18px;border-top:1px solid var(--line)}h3{font-size:19px}a{color:#80d9ff;overflow-wrap:anywhere}a:hover{color:var(--accent)}
+p,li{overflow-wrap:anywhere}li{margin-bottom:9px}code{font-family:Consolas,monospace;font-size:.88em;background:#1d3048;border-radius:5px;padding:2px 5px}pre{background:#08101d;border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;line-height:1.5}pre code{background:none;padding:0}
+table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;margin:20px 0}th,td{padding:12px 15px;text-align:left;border-bottom:1px solid var(--line)}th{background:#1b3049}tr:nth-child(even){background:#142238}blockquote{border-left:4px solid var(--accent);padding:6px 18px;margin:20px 0;background:var(--panel)}footer{color:var(--muted);font-size:12px;margin-top:22px;overflow-wrap:anywhere}
+@media(max-width:600px){main{padding:16px 12px 40px}article{padding:16px}header{padding:22px}}@media print{body{background:white;color:#17283c}main{max-width:none}header,article,.card{background:white;border-color:#aaa}a{color:#134a80}pre,code,th,tr:nth-child(even){background:#f1f4f7;color:#17283c}}
+</style><main>
+<header><div class="eyebrow">EVOLUTION · NEX · RODADA 1</div><h1>🛠️ Await instance deletion before reporting success</h1>
+<p>Evolution · código, prova offline e continuidade</p>
+<a href="DELETE-COMPLETION.md">📄 Fonte canônica em Markdown</a></header>
+<div class="cards"><div class="card"><strong>🧪 6 / 6</strong><small>Candidato · baseline com 4 falhas esperadas</small></div>
+<div class="card"><strong>🔒 8 + 15</strong><small>Guardas do patch + testes do avaliador</small></div>
+<div class="card"><strong>📦 Pendente</strong><small>Build Docker e digest real</small></div>
+<div class="card"><strong>⏳ 200 min</strong><small>Canário real ainda necessário</small></div></div>
+<article><h1>Await instance deletion before reporting success</h1>
+<p>Canonical report; <a href="DELETE-COMPLETION.html">human HTML</a>. Owner: nex-evolution-build-sol. Origin: <a href="https://github.com/xmacna/elysium/issues/244">elysium#244</a>, authorized Nex queue and PAUTA 3. This is the upstream Evolution completion contract; Partenon polling/retry/recovery remains a separate task and the issue must stay open.</p>
+<h2>Reproduction and change</h2>
+<p>The DELETE controller used synchronous <code>emit('remove.instance')</code>. The monitor's asynchronous listener then launched both cleanup promises without awaiting them, removed the in-memory entry and logged REMOVED while the persistent name could still exist. A following create could race that deletion, as described in #244.</p>
+<p>The controller now awaits <code>emitAsync</code>. The listener awaits session/cache cleanup, then the existing persistent-store cleanup, before removing the in-memory entry and logging success. Cleanup failures propagate to the controller's existing error response; they do not produce a successful DELETE. Cleanup still uses the existing per-instance methods and scoping. No schema change, new deletion path, retry loop, background job or auto-restart is introduced.</p>
+<h2>Offline proof</h2>
+<p>The test compiles the entire actual controller and monitor classes using the project's TypeScript compiler and exercises them together with the actual EventEmitter2 implementation. It substitutes external imports and injects cleanup promises. Real process/filesystem cleanup is forbidden by throwing stubs. No database, auth store, WhatsApp session, proxy, listener or network request is opened. Deferred promises control completion; no sleeps or service timing are used.</p>
+<p>The six initial regression cases failed on baseline <code>6b93af39399f01a17aa421b0a235d82c41c6e4c9</code>. The candidate passes seven cases, including added open/connecting logout ordering:</p>
+<table>
+<thead>
+<tr>
+<th>Contract</th>
+<th>Expected result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Persistent cleanup still running</td>
+<td>DELETE promise remains pending</td>
+</tr>
+<tr>
+<td>Session/cache cleanup still running</td>
+<td>Persistent deletion has not started</td>
+</tr>
+<tr>
+<td>Persistent deletion still running</td>
+<td>Live registry entry remains present</td>
+</tr>
+<tr>
+<td>Persistent cleanup rejects</td>
+<td>DELETE rejects; target/other registry entries retained</td>
+</tr>
+<tr>
+<td>Success</td>
+<td>Both cleanup stages once, target removed, other instance unchanged</td>
+</tr>
+<tr>
+<td>Session cleanup rejects</td>
+<td>Awaiting removal rejects, store cleanup not started</td>
+</tr>
+<tr>
+<td>Open/connecting request</td>
+<td>Existing logout finishes before removal stages</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-sh">npm ci
+npm run test:xmacna-instance-delete
+npm run build
+</code></pre>
+<p>The targeted local run used Node 22.11.0 with a small isolated TypeScript/EventEmitter2 harness. The Node 24 quality workflow runs this test before the existing inbox tests and build. Its outcome must be read from the PR; no CI success is asserted in advance. To reproduce the six baseline failures, copy those six tests into a separate baseline checkout with its locked dependencies; never change an active owner's files.</p>
+<h2>Limits and operational acceptance</h2>
+<p>Awaiting real cleanup increases request latency to include its actual duration. Existing database/webhook/provider timeouts still govern that duration; this patch does not guarantee a ten-second bound or atomic rollback if a cleanup stage partially completes before failing. External-client timeouts need the Partenon polling/recovery path described in #244. Background callers using synchronous <code>emit</code> do not acquire this API completion guarantee.</p>
+<p>The tests substitute cleanup I/O; they prove orchestration/error propagation, not real provider, filesystem or database deletion. Concurrent logout/connection events and a real migration still require integration/canary review by the owner. No production deletion or migration was performed. Independent Nex and Rafael review, publication/deployment authority and real environment readback remain separate. The issue is not closed by this upstream candidate.</p></article><footer>Render autocontido, sem fontes ou scripts externos. Se houver divergência, o Markdown prevalece.<br>
+SHA256 da fonte canônica: e330b443e18d9e3e8083fb0dfb8dc739e856135ae1b2d51a4f242365eef699d0</footer></main></html>
