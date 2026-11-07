@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Evolution Status ACK — Nex, rodada 1</title><style>
+:root{color-scheme:dark;--bg:#0c1422;--panel:#132238;--ink:#edf4ff;--muted:#adbed4;--line:#29415d;--accent:#6ce0c3}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,Segoe UI,sans-serif}
+main{max-width:1120px;margin:auto;padding:32px 24px 80px}header{padding:30px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(125deg,#18344c,#19233b)}
+.eyebrow{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:2px}header h1{font-size:clamp(26px,4vw,44px);line-height:1.15;margin:14px 0}header p{color:var(--muted);margin:10px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:24px 0}.card{background:var(--panel);padding:18px;border-radius:15px;border:1px solid var(--line)}.card strong{font-size:25px;display:block}.card small{color:var(--muted)}
+article{background:#101c2d;border:1px solid var(--line);border-radius:18px;padding:26px 30px}article h1{font-size:28px}h2{font-size:23px;margin-top:36px;padding-top:18px;border-top:1px solid var(--line)}h3{font-size:19px}a{color:#80d9ff;overflow-wrap:anywhere}a:hover{color:var(--accent)}
+p,li{overflow-wrap:anywhere}li{margin-bottom:9px}code{font-family:Consolas,monospace;font-size:.88em;background:#1d3048;border-radius:5px;padding:2px 5px}pre{background:#08101d;border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;line-height:1.5}pre code{background:none;padding:0}
+table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;margin:20px 0}th,td{padding:12px 15px;text-align:left;border-bottom:1px solid var(--line)}th{background:#1b3049}tr:nth-child(even){background:#142238}blockquote{border-left:4px solid var(--accent);padding:6px 18px;margin:20px 0;background:var(--panel)}footer{color:var(--muted);font-size:12px;margin-top:22px;overflow-wrap:anywhere}
+@media(max-width:600px){main{padding:16px 12px 40px}article{padding:16px}header{padding:22px}}@media print{body{background:white;color:#17283c}main{max-width:none}header,article,.card{background:white;border-color:#aaa}a{color:#134a80}pre,code,th,tr:nth-child(even){background:#f1f4f7;color:#17283c}}
+</style><main>
+<header><div class="eyebrow">EVOLUTION · NEX · RODADA 1</div><h1>🛠️ Evolution Status ACK — Nex, rodada 1</h1>
+<p>ACK de Status no build principal · código, prova offline e continuidade</p>
+<a href="PLANO.md">📄 Fonte canônica em Markdown</a></header>
+<div class="cards"><div class="card"><strong>🧪 6 / 6</strong><small>Candidato · baseline com 4 falhas esperadas</small></div>
+<div class="card"><strong>🔒 8 + 15</strong><small>Guardas do patch + testes do avaliador</small></div>
+<div class="card"><strong>📦 Pendente</strong><small>Build Docker e digest real</small></div>
+<div class="card"><strong>⏳ 200 min</strong><small>Canário real ainda necessário</small></div></div>
+<article><h1>Evolution Status ACK — Nex, rodada 1</h1>
+<p>Fonte canônica; <a href="PLANO.html">versão visual</a>. Dono: <code>nex-evolution-build-sol</code>; branch <code>xmacna/1064-status-ack-main-build</code>. Mandato: <a href="https://github.com/xmacna/elysium/issues/1064">elysium#1064</a>, revisão anterior em <a href="https://github.com/xmacna/evolution-api/pull/9#pullrequestreview-5809084909">Evolution PR #9</a>. Sem checkpoint anterior nesta posse.</p>
+<ul>
+<li>[x] Ler #1064/#1047 e revisão Rafael; preservar a branch da PR #9 e os patches interactiveResponseMessage de outra frente.</li>
+<li>[x] Integrar patch auditado ao Dockerfile principal e CI, com pins, SHA256, âncoras únicas e recusa de drift.</li>
+<li>[x] Corrigir ID <code>ignored-ok</code>, espera por conclusão da fila e tolerância de webhook explícita/testada.</li>
+<li>[x] Prova offline: baseline 4 falhas; candidato 6/6; guardas 8/8; avaliador 15/15; CLI/sintaxe PASS. Receita e limites: <a href="docs/status-ack/BUILD.md">BUILD.md</a> / <a href="docs/status-ack/BUILD.html">BUILD.html</a>.</li>
+<li>[ ] Publicar PR/prova, solicitar revisão Rafael e Nex no SHA atual, vincular em #1064, registrar inbox.</li>
+<li>[ ] Conferir CI e revisões; tratar apontamentos dentro desta posse; atualizar checkpoint e HANDOFF.md/.html.</li>
+</ul>
+<p>AGUARDA: CI, build completo no ambiente Node 24; testes locais leves executados com Node 22. Docker não está instalado/disponível no PATH; nenhum serviço foi instalado/configurado. Receita reproduzível entregue, sem afirmar build de imagem local.</p>
+<p>AGUARDA: revisor Nex e <code>raffareis</code>, revisão independente do candidato atual. A aprovação da PR #9 não aprova esta integração.</p>
+<p>AGUARDA: dono/Vesper, digest real de registro, canário ≥4 ciclos/200min, revisão e GO. A issue permanece aberta. Sem publicação de imagem, canário real, deploy, produção, beta2, n8n ou cliente nesta rodada.</p></article><footer>Render autocontido, sem fontes ou scripts externos. Se houver divergência, o Markdown prevalece.<br>
+SHA256 da fonte canônica: 89697c6364cc2e712e1329347ce78dd11ecd00a669de7b4e0898cf615ad987aa</footer></main></html>

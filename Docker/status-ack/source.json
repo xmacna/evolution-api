@@ -1,0 +1,13 @@
+{
+  "name": "baileys",
+  "version": "7.0.0-rc14",
+  "resolved": "https://registry.npmjs.org/baileys/-/baileys-7.0.0-rc14.tgz",
+  "integrity": "sha512-pewtrljhWx5JTUBvvkXZz1fL3JPiwzjBsnhx/DWf2LWBx1cZNH7J/sF22xDehba5mySWUQU4a1Pwt7lWARUxaA==",
+  "reviewedPatchCommit": "17183c7200adb4207096ef726d8b120ba4b9ceb4",
+  "patchedSha256": "4537c82638a21a37f96ec2d03e58391cf42d6d3ed01d1930bf440563b5bf4a40",
+  "files": {
+    "lib/Socket/messages-recv.js": "850445e6f9e076b1beb98034cbc5cf79562dfda26a44f5a874a84e3609bfd710",
+    "lib/Utils/offline-node-processor.js": "7c50dea48a0f2be6284b588ea44f656b9903c9b5112b104d8791cd1411cc7840",
+    "lib/Utils/stanza-ack.js": "3157d58ebcf0e800232afd555d7bde2233b06eef3f530524fe8e154f221538b2"
+  }
+}

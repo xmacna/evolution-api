@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Status ACK in the main build — issue #1064</title><style>
+:root{color-scheme:dark;--bg:#0c1422;--panel:#132238;--ink:#edf4ff;--muted:#adbed4;--line:#29415d;--accent:#6ce0c3}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,Segoe UI,sans-serif}
+main{max-width:1120px;margin:auto;padding:32px 24px 80px}header{padding:30px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(125deg,#18344c,#19233b)}
+.eyebrow{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:2px}header h1{font-size:clamp(26px,4vw,44px);line-height:1.15;margin:14px 0}header p{color:var(--muted);margin:10px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:24px 0}.card{background:var(--panel);padding:18px;border-radius:15px;border:1px solid var(--line)}.card strong{font-size:25px;display:block}.card small{color:var(--muted)}
+article{background:#101c2d;border:1px solid var(--line);border-radius:18px;padding:26px 30px}article h1{font-size:28px}h2{font-size:23px;margin-top:36px;padding-top:18px;border-top:1px solid var(--line)}h3{font-size:19px}a{color:#80d9ff;overflow-wrap:anywhere}a:hover{color:var(--accent)}
+p,li{overflow-wrap:anywhere}li{margin-bottom:9px}code{font-family:Consolas,monospace;font-size:.88em;background:#1d3048;border-radius:5px;padding:2px 5px}pre{background:#08101d;border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;line-height:1.5}pre code{background:none;padding:0}
+table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;margin:20px 0}th,td{padding:12px 15px;text-align:left;border-bottom:1px solid var(--line)}th{background:#1b3049}tr:nth-child(even){background:#142238}blockquote{border-left:4px solid var(--accent);padding:6px 18px;margin:20px 0;background:var(--panel)}footer{color:var(--muted);font-size:12px;margin-top:22px;overflow-wrap:anywhere}
+@media(max-width:600px){main{padding:16px 12px 40px}article{padding:16px}header{padding:22px}}@media print{body{background:white;color:#17283c}main{max-width:none}header,article,.card{background:white;border-color:#aaa}a{color:#134a80}pre,code,th,tr:nth-child(even){background:#f1f4f7;color:#17283c}}
+</style><main>
+<header><div class="eyebrow">EVOLUTION · NEX · RODADA 1</div><h1>🛠️ Status ACK in the main build — issue #1064</h1>
+<p>ACK de Status no build principal · código, prova offline e continuidade</p>
+<a href="BUILD.md">📄 Fonte canônica em Markdown</a></header>
+<div class="cards"><div class="card"><strong>🧪 6 / 6</strong><small>Candidato · baseline com 4 falhas esperadas</small></div>
+<div class="card"><strong>🔒 8 + 15</strong><small>Guardas do patch + testes do avaliador</small></div>
+<div class="card"><strong>📦 Pendente</strong><small>Build Docker e digest real</small></div>
+<div class="card"><strong>⏳ 200 min</strong><small>Canário real ainda necessário</small></div></div>
+<article><h1>Status ACK in the main build — issue #1064</h1>
+<p>Canonical document; <a href="BUILD.html">human HTML render</a>. Owner: nex-evolution-build-sol. Code review requested from Rafael (<code>raffareis</code>) and the independent Nex reviewer. Related: <a href="https://github.com/xmacna/elysium/issues/1064">elysium#1064</a>, <a href="https://github.com/xmacna/elysium/issues/1047">#1047</a>, <a href="https://github.com/xmacna/evolution-api/pull/9#pullrequestreview-5809084909">reviewed PR #9</a>.</p>
+<h2>Scope and provenance</h2>
+<p>The main Dockerfile previously installed rc14 without the Status stanza patch. It now runs the offline differential verification after <code>npm ci</code>, applies the patch, and copies those patched dependencies into the final stage. The existing quality CI performs the same verification and application before the application checks/build. There is no postinstall hook: ordinary dependency installation remains separate from explicitly patching it.</p>
+<p><code>Docker/status-ack/source.json</code> records the npm URL, lockfile SHA512 integrity, three source SHA256 values and the exact transformed output hash. The patch transformation comes from PR #9, commit <code>17183c7200adb4207096ef726d8b120ba4b9ceb4</code>; its output bytes are unchanged. No code from the separate interactiveResponseMessage work is included. The PR #9 branch is untouched.</p>
+<table>
+<thead>
+<tr>
+<th>Input/output</th>
+<th>Pin</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Package</td>
+<td><code>baileys@7.0.0-rc14</code></td>
+</tr>
+<tr>
+<td>Source</td>
+<td><code>https://registry.npmjs.org/baileys/-/baileys-7.0.0-rc14.tgz</code></td>
+</tr>
+<tr>
+<td>Archive SHA256 observed locally</td>
+<td><code>2eb4579d9594ff3b55359bcf5685e19f034bfd77e49da3a7d158474167791869</code></td>
+</tr>
+<tr>
+<td>Original messages-recv.js SHA256</td>
+<td><code>850445e6f9e076b1beb98034cbc5cf79562dfda26a44f5a874a84e3609bfd710</code></td>
+</tr>
+<tr>
+<td>Patched messages-recv.js SHA256</td>
+<td><code>4537c82638a21a37f96ec2d03e58391cf42d6d3ed01d1930bf440563b5bf4a40</code></td>
+</tr>
+</tbody>
+</table>
+<p>The patch refuses a different package identity, modified source/queue/ACK-builder bytes, missing/duplicate anchors, repeated application or changed output bytes before writing. Updating Baileys requires another source/patch review; it must never silently skip this guard. The baseline runner checks the package and lockfile pins and requires exactly the four expected Status failures, then six candidate passes, with no cancellations/skips.</p>
+<p>The patch is reproducible from git and the locked npm source. Whole-image byte reproducibility is not established: the existing Node/Alpine tags and apk repository inputs remain mutable. No registry digest or local image identity is invented here.</p>
+<h2>Reproduce the offline proof without installing application dependencies</h2>
+<p>Use Node 24 (the project runtime) and Python 3. The preparer downloads only the approximately 1 MB npm archive, verifies its SHA512 against the lockfile/pins and extracts four explicitly selected regular files. It runs no install scripts, imports no application module and refuses an existing destination.</p>
+<pre><code class="language-powershell"># Run in the checkout; choose a NEW path outside it.
+python Docker/status-ack/prepare-source.py C:/Temp/evolution-rc14-proof
+$env:BAILEYS_AUDITED_ROOT = 'C:/Temp/evolution-rc14-proof'
+npm run test:status-ack
+</code></pre>
+<p>To prepare with an already cached archive and no network:</p>
+<pre><code class="language-powershell">python Docker/status-ack/prepare-source.py C:/Temp/evolution-rc14-cached --archive C:/Temp/baileys-7.0.0-rc14.tgz
+$env:BAILEYS_AUDITED_ROOT = 'C:/Temp/evolution-rc14-cached'
+npm run test:status-ack
+</code></pre>
+<p>On POSIX, set <code>BAILEYS_AUDITED_ROOT=/tmp/evolution-rc14-proof npm run test:status-ack</code> after running the Python preparer with that new path. Once the audited files exist, <code>npm run test:status-ack</code> makes no network requests. Tests import the actual npm ACK builder and offline processor, and execute the actual routing/ACK code with socket I/O stubbed. They do not open sessions, start Evolution, connect to a database or send WhatsApp traffic. Temporary patch-CLI checks leave the audited source unchanged.</p>
+<p>The runner prints TAP for the intentional failing baseline and then validates the expected failure set. Its final exit is zero only if baseline, candidate, guard and evidence checks all match. Look for the final <code>STATUS_ACK_PROOF</code> JSON line; a stray failing subprocess is not accepted as a successful baseline.</p>
+<h2>Build from the checkout</h2>
+<p>Normal CI/build path, on a fresh install:</p>
+<pre><code class="language-sh">npm ci
+npm run test:status-ack
+npm run patch:status-ack
+DATABASE_PROVIDER=postgresql npm run db:generate
+npm run build
+</code></pre>
+<p>Remove an external <code>BAILEYS_AUDITED_ROOT</code> override when checking the installed dependency. Repeated application intentionally fails; use a fresh <code>npm ci</code> when rebuilding the dependency tree. Applying the patch explicitly is required for non-Docker application builds.</p>
+<p>On an already provisioned Docker host, from a clean checkout of this PR commit:</p>
+<pre><code class="language-sh">docker build --progress=plain --tag evolution-status-ack:local-review .
+docker run --rm --network none --entrypoint node evolution-status-ack:local-review \
+  -e &quot;const fs=require('node:fs'),c=require('node:crypto');const h=c.createHash('sha256').update(fs.readFileSync('node_modules/baileys/lib/Socket/messages-recv.js')).digest('hex');console.log(h);if(h!=='4537c82638a21a37f96ec2d03e58391cf42d6d3ed01d1930bf440563b5bf4a40')process.exit(1)&quot;
+</code></pre>
+<p>The readback overrides the image entrypoint and uses no network or volume. It does not start Evolution or database migration. Build acquisition needs network for locked packages and the pre-existing OS/base inputs. Do not push an image or run the normal application entrypoint under this mandate. On Nex any heavy build must first acquire the manager's exclusive <code>heavy-build.lock</code> and confirm at least 1.5 GiB free commit; this recipe is not an automated lock bypass.</p>
+<h2>Test corrections and boundary policy</h2>
+<p>The two offline queue tests now subscribe to completion of their following message before enqueuing it. There is no fixed sleep; a 5-second test deadline detects a stranded queue. The ignored-JID recovery case checks exactly one successful ACK, its <code>ignored-ok</code> ID and absence of an error attribute.</p>
+<p><code>canary-evidence.cjs</code> accepts the manifest field <code>webhookBoundaryToleranceMs</code> only as an integer from 0 to 60000; omitted means zero. This bounded policy is proposed for review, not an operational approval. A new incoming event must belong to its cycle <code>[start, end)</code>; only webhook completion may extend to <code>end + tolerance</code> inclusive. The ten-minute incoming-to-webhook limit, cycle duration/continuity, unique IDs, real Status/ACK counters, error counters, retained logs and isolation/consent requirements still apply. A delivery exactly at <code>end</code> needs no grace. An event at <code>end</code> belongs to the following cycle.</p>
+<p>Every delivery past its cycle end is exposed in <code>boundaryDeliveries</code> with cycle, message ID hash and delay, including rejected late deliveries. The effective tolerance is returned. Missing evidence does not become a success: empty pairs, ID reuse, delivery beyond the declared grace, reversed clocks or an over-ten-minute delivery yield HOLD. The evaluator checks supplied metadata and cannot discover omitted traffic by itself; reviewers must read the retained logs and nominated probe IDs.</p>
+<p>The image allowlist remains the historically reviewed PR #9 canary image. A newly built main image is not automatically approved by this evaluator. Its real identity/digest and evidence need the owner's review before updating that policy.</p>
+<h2>Evidence and remaining acceptance criteria</h2>
+<p>Local first-round proof on Windows/Node <code>v22.11.0</code> (Node 24 CI result must be checked separately):</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Official archive / lockfile SHA512 / three file SHA256s</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Baseline Status seam</td>
+<td>2 pass / 4 expected failures</td>
+</tr>
+<tr>
+<td>Patched Status seam</td>
+<td>6 pass / 0 skip</td>
+</tr>
+<tr>
+<td>Patch CLI / drift guards</td>
+<td>8 pass</td>
+</tr>
+<tr>
+<td>Evidence evaluator</td>
+<td>15 pass, including 7 new boundary-policy cases</td>
+</tr>
+<tr>
+<td>Disposable CLI application / patched file syntax</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Source preparer: good archive, bad integrity, overwrite refusal</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>Local Docker image build</td>
+<td>NOT RUN: Docker executable unavailable</td>
+</tr>
+<tr>
+<td>Full local application build</td>
+<td>NOT RUN: application dependencies absent; delegated to existing Node 24 CI</td>
+</tr>
+<tr>
+<td>Registry digest / actual canary</td>
+<td>PENDING owner/Vesper</td>
+</tr>
+</tbody>
+</table>
+<p>Two new policy tests failed against the previous evaluator before its correction. All tests use synthetic I/O/evidence. The final PR conversation records the tested commit and CI evidence; this document does not assert a CI outcome in advance.</p>
+<p>Issue #1064 must remain open until a reviewed image has a real registry digest and the isolated canary satisfies the operational criteria: baseline <code>ack class=status</code> failure on the same internal number, followed by at least four contiguous 50-minute cycles / 200 minutes on the candidate with real Status ACKs and continuing inbound/webhook delivery. Rafael's review and Vesper's GO remain required. Registry publication, actual canary, rollout and the 24-hour production watch are outside this code/testing task.</p></article><footer>Render autocontido, sem fontes ou scripts externos. Se houver divergência, o Markdown prevalece.<br>
+SHA256 da fonte canônica: 416f798b7f9f57a54843c1d725cc00feeab883f6dc9a18d3aae53545472494ab</footer></main></html>

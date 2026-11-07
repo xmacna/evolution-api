@@ -15,6 +15,10 @@ COPY ./tsup.config.ts ./
 
 RUN npm ci --silent
 
+# Verify the rc14 baseline/candidate before applying the audited, fail-closed patch.
+COPY ./Docker/status-ack ./Docker/status-ack
+RUN npm run test:status-ack && npm run patch:status-ack
+
 COPY ./src ./src
 COPY ./public ./public
 COPY ./prisma ./prisma
