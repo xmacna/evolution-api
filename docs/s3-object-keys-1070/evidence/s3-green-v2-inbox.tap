@@ -1,0 +1,530 @@
+TAP version 13
+# [Evolution API]  24996 - Sat Nov 07 2026 22:16:12   LOG  [BaileysMessageProcessor] [string] Processing batch of 2 messages
+# [Evolution API]  24996 - Sat Nov 07 2026 22:16:12   WARN  [BaileysMessageProcessor] [string] Retrying message poison after attempt 1: sink failed
+# [Evolution API]  24996 - Sat Nov 07 2026 22:16:12   ERROR  [BaileysMessageProcessor] [string] Message poison exhausted 1 retries without blocking the batch: Error: sink failed
+# [Evolution API]  24996 - Sat Nov 07 2026 22:16:12   LOG  [BaileysMessageProcessor] [string] Processing batch of 2 messages
+# Subtest: a poison message exhausts its retries without blocking the next item in the batch
+ok 1 - a poison message exhausts its retries without blocking the next item in the batch
+  ---
+  duration_ms: 40.6272
+  type: 'test'
+  ...
+# Subtest: batches remain serialized
+ok 2 - batches remain serialized
+  ---
+  duration_ms: 38.7647
+  type: 'test'
+  ...
+# Subtest: isolates the same remoteJid across instances
+ok 3 - isolates the same remoteJid across instances
+  ---
+  duration_ms: 27.8253
+  type: 'test'
+  ...
+# Subtest: uses an injective tuple key instead of an ambiguous delimiter
+ok 4 - uses an injective tuple key instead of an ambiguous delimiter
+  ---
+  duration_ms: 0.347
+  type: 'test'
+  ...
+# Subtest: still coalesces consecutive messages within one instance
+ok 5 - still coalesces consecutive messages within one instance
+  ---
+  duration_ms: 20.4959
+  type: 'test'
+  ...
+# Subtest: reports one callback failure on every coalesced acceptance receipt
+ok 6 - reports one callback failure on every coalesced acceptance receipt
+  ---
+  duration_ms: 15.8335
+  type: 'test'
+  ...
+# Subtest: coalesces messages that arrive serialized through the Baileys queue (\#518)
+ok 7 - coalesces messages that arrive serialized through the Baileys queue (\#518)
+  ---
+  duration_ms: 403.3097
+  type: 'test'
+  ...
+# Subtest: a slow flush never blocks the next message of the same lead (\#518)
+ok 8 - a slow flush never blocks the next message of the same lead (\#518)
+  ---
+  duration_ms: 373.227
+  type: 'test'
+  ...
+# Subtest: accumulates debounce metadata for the n8n payload (\#518)
+ok 9 - accumulates debounce metadata for the n8n payload (\#518)
+  ---
+  duration_ms: 62.289
+  type: 'test'
+  ...
+# Subtest: normalizes the Baileys messageTimestamp shapes instead of leaking NaN
+ok 10 - normalizes the Baileys messageTimestamp shapes instead of leaking NaN
+  ---
+  duration_ms: 0.8244
+  type: 'test'
+  ...
+# Subtest: phone participant keeps the international format
+ok 11 - phone participant keeps the international format
+  ---
+  duration_ms: 4.1632
+  type: 'test'
+  ...
+# Subtest: LID addressing prefers participantAlt and falls back to participant
+ok 12 - LID addressing prefers participantAlt and falls back to participant
+  ---
+  duration_ms: 0.3985
+  type: 'test'
+  ...
+# Subtest: missing participant falls back to participantAlt, then to the push name only
+ok 13 - missing participant falls back to participantAlt, then to the push name only
+  ---
+  duration_ms: 0.2768
+  type: 'test'
+  ...
+# Subtest: identifier that is not a phone number is shown raw
+ok 14 - identifier that is not a phone number is shown raw
+  ---
+  duration_ms: 0.4208
+  type: 'test'
+  ...
+# Subtest: group text without participant reaches Chatwoot instead of throwing
+ok 15 - group text without participant reaches Chatwoot instead of throwing
+  ---
+  duration_ms: 2.422
+  type: 'test'
+  ...
+# Subtest: group text from a LID participant without participantAlt reaches Chatwoot
+ok 16 - group text from a LID participant without participantAlt reaches Chatwoot
+  ---
+  duration_ms: 0.373
+  type: 'test'
+  ...
+# Subtest: group text from a phone participant keeps the existing header
+ok 17 - group text from a phone participant keeps the existing header
+  ---
+  duration_ms: 0.5783
+  type: 'test'
+  ...
+# Subtest: audio without mediaUrl keeps the legacy wire format
+ok 18 - audio without mediaUrl keeps the legacy wire format
+  ---
+  duration_ms: 1.2407
+  type: 'test'
+  ...
+# Subtest: audio with mediaUrl preserves the existing wire format
+ok 19 - audio with mediaUrl preserves the existing wire format
+  ---
+  duration_ms: 0.7052
+  type: 'test'
+  ...
+# Subtest: unmapped messages have no content instead of the literal unknown
+ok 20 - unmapped messages have no content instead of the literal unknown
+  ---
+  duration_ms: 0.379
+  type: 'test'
+  ...
+# Subtest: text, emoji typed as text and ad-only messages keep their content
+ok 21 - text, emoji typed as text and ad-only messages keep their content
+  ---
+  duration_ms: 0.2535
+  type: 'test'
+  ...
+# Subtest: a confirmed remoteJidAlt persists for a later LID-only event and keeps the reply destination
+ok 22 - a confirmed remoteJidAlt persists for a later LID-only event and keeps the reply destination
+  ---
+  duration_ms: 3.3745
+  type: 'test'
+  ...
+# Subtest: Baileys contact is accepted only when it returns a full phone JID
+ok 23 - Baileys contact is accepted only when it returns a full phone JID
+  ---
+  duration_ms: 0.8095
+  type: 'test'
+  ...
+# Subtest: unknown, conflicting and cross-instance aliases fail without deriving digits from the LID
+ok 24 - unknown, conflicting and cross-instance aliases fail without deriving digits from the LID
+  ---
+  duration_ms: 0.4775
+  type: 'test'
+  ...
+# Subtest: a phone event with alternate LID confirms the alias for a later LID event
+ok 25 - a phone event with alternate LID confirms the alias for a later LID event
+  ---
+  duration_ms: 0.28
+  type: 'test'
+  ...
+# Subtest: group addresses do not become a member phone through an alternate LID
+ok 26 - group addresses do not become a member phone through an alternate LID
+  ---
+  duration_ms: 0.2226
+  type: 'test'
+  ...
+# Subtest: unknown LID reaches the bot with its original JID in off and shadow
+ok 27 - unknown LID reaches the bot with its original JID in off and shadow
+  ---
+  duration_ms: 0.5836
+  type: 'test'
+  ...
+# Subtest: enforce receipt retains unknown LID and retries after alias confirmation
+ok 28 - enforce receipt retains unknown LID and retries after alias confirmation
+  ---
+  duration_ms: 0.571
+  type: 'test'
+  ...
+# Subtest: the same message ID with and without alternate JID stays in one phone session
+ok 29 - the same message ID with and without alternate JID stays in one phone session
+  ---
+  duration_ms: 0.3167
+  type: 'test'
+  ...
+# Subtest: derives stable tenant scopes without merging distinct raw instance names
+ok 30 - derives stable tenant scopes without merging distinct raw instance names
+  ---
+  duration_ms: 1.1856
+  type: 'test'
+  ...
+# Subtest: classifies real, stub, protocol and internal control payloads
+ok 31 - classifies real, stub, protocol and internal control payloads
+  ---
+  duration_ms: 0.2193
+  type: 'test'
+  ...
+# Subtest: canonical hash ignores volatile timestamp, jid, fromMe and requestId fields
+ok 32 - canonical hash ignores volatile timestamp, jid, fromMe and requestId fields
+  ---
+  duration_ms: 0.2684
+  type: 'test'
+  ...
+# Subtest: canonical hash detects divergent real content
+ok 33 - canonical hash detects divergent real content
+  ---
+  duration_ms: 0.1615
+  type: 'test'
+  ...
+# Subtest: canonical hash ignores Baileys device metadata added to a real-message replay
+ok 34 - canonical hash ignores Baileys device metadata added to a real-message replay
+  ---
+  duration_ms: 1.3338
+  type: 'test'
+  ...
+# Subtest: canonical hash preserves material message context while ignoring device metadata
+ok 35 - canonical hash preserves material message context while ignoring device metadata
+  ---
+  duration_ms: 0.2095
+  type: 'test'
+  ...
+# Subtest: receipt policy uses the stable provider id and tolerates enriched replay envelopes
+ok 36 - receipt policy uses the stable provider id and tolerates enriched replay envelopes
+  ---
+  duration_ms: 0.1668
+  type: 'test'
+  ...
+# Subtest: CTWA referral enrichment changes the diagnostic hash without changing receipt identity
+ok 37 - CTWA referral enrichment changes the diagnostic hash without changing receipt identity
+  ---
+  duration_ms: 0.1929
+  type: 'test'
+  ...
+# Subtest: invalid persisted modes never enable global enforce
+ok 38 - invalid persisted modes never enable global enforce
+  ---
+  duration_ms: 0.1722
+  type: 'test'
+  ...
+# Subtest: enforce downgrade is blocked until incomplete receipts drain
+ok 39 - enforce downgrade is blocked until incomplete receipts drain
+  ---
+  duration_ms: 0.2411
+  type: 'test'
+  ...
+# Subtest: instance API schemas accept only explicit inbox rollout modes
+ok 40 - instance API schemas accept only explicit inbox rollout modes
+  ---
+  duration_ms: 3.3583
+  type: 'test'
+  ...
+# [Evolution API]  33340 - Sat Nov 07 2026 22:16:18   VERBOSE  [CacheService] [string] cacheservice disabled
+# [Evolution API]  33340 - Sat Nov 07 2026 22:16:18   VERBOSE  [CacheService] [string] cacheservice disabled
+# [Evolution API]  33340 - Sat Nov 07 2026 22:16:18   INFO  [WA MODULE] [string] Module - ON
+# [Evolution API]  33340 - Sat Nov 07 2026 22:16:19   VERBOSE  [CacheService] [string] cacheservice disabled
+# (node:33340) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: wacli shape (only audioMessage) is dropped raw and reaches media processing as own-key copy
+ok 41 - wacli shape (only audioMessage) is dropped raw and reaches media processing as own-key copy
+  ---
+  duration_ms: 22.0537
+  type: 'test'
+  ...
+# Subtest: phone shape (audioMessage + messageContextInfo) reaches media processing either way
+ok 42 - phone shape (audioMessage + messageContextInfo) reaches media processing either way
+  ---
+  duration_ms: 2.814
+  type: 'test'
+  ...
+# Subtest: messageContextInfo-only message is still skipped with the own-key copy
+ok 43 - messageContextInfo-only message is still skipped with the own-key copy
+  ---
+  duration_ms: 0.4063
+  type: 'test'
+  ...
+# Subtest: document with caption: the unwrapped inner protobuf is dropped raw and kept as own-key copy
+ok 44 - document with caption: the unwrapped inner protobuf is dropped raw and kept as own-key copy
+  ---
+  duration_ms: 0.8967
+  type: 'test'
+  ...
+# Subtest: ephemeral wacli audio reaches media processing and the received message is not mutated
+ok 45 - ephemeral wacli audio reaches media processing and the received message is not mutated
+  ---
+  duration_ms: 0.7662
+  type: 'test'
+  ...
+# Subtest: send path shape (prepareMessage output) already passes the guard without the own-key copy
+ok 46 - send path shape (prepareMessage output) already passes the guard without the own-key copy
+  ---
+  duration_ms: 1.5989
+  type: 'test'
+  ...
+# Subtest: viewOnceMessageV2 video: the unwrapped content is the inner videoMessage (media+video true)
+ok 47 - viewOnceMessageV2 video: the unwrapped content is the inner videoMessage (media+video true)
+  ---
+  duration_ms: 1.7544
+  type: 'test'
+  ...
+# Subtest: viewOnceMessage video and ephemeral image unwrap through their envelopes
+ok 48 - viewOnceMessage video and ephemeral image unwrap through their envelopes
+  ---
+  duration_ms: 2.5662
+  type: 'test'
+  ...
+# Subtest: viewOnceMessageV2Extension video unwraps (extended variant, MAR-414)
+ok 49 - viewOnceMessageV2Extension video unwraps (extended variant, MAR-414)
+  ---
+  duration_ms: 1.0685
+  type: 'test'
+  ...
+# Subtest: plain and nested envelopes unwrap recursively to the innermost media
+ok 50 - plain and nested envelopes unwrap recursively to the innermost media
+  ---
+  duration_ms: 1.2243
+  type: 'test'
+  ...
+# Subtest: envelope without media keeps detection false and does not change the envelope
+ok 51 - envelope without media keeps detection false and does not change the envelope
+  ---
+  duration_ms: 1.5699
+  type: 'test'
+  ...
+# Subtest: empty media emits a warning with instance and ID and stops before S3
+ok 52 - empty media emits a warning with instance and ID and stops before S3
+  ---
+  duration_ms: 1.8266
+  type: 'test'
+  ...
+# Subtest: download exception emits a stage warning and does not create Media
+ok 53 - download exception emits a stage warning and does not create Media
+  ---
+  duration_ms: 0.3814
+  type: 'test'
+  ...
+# Subtest: S3 returned Error stops Media creation and identifies the failing stage
+ok 54 - S3 returned Error stops Media creation and identifies the failing stage
+  ---
+  duration_ms: 0.2447
+  type: 'test'
+  ...
+# Subtest: successful upload creates Media and updates the message in order
+ok 55 - successful upload creates Media and updates the message in order
+  ---
+  duration_ms: 0.2759
+  type: 'test'
+  ...
+# Subtest: durable delivery policy propagates errors while baseline policy preserves swallow semantics
+ok 56 - durable delivery policy propagates errors while baseline policy preserves swallow semantics
+  ---
+  duration_ms: 1.895
+  type: 'test'
+  ...
+# Subtest: inbound failure propagation at the controller is opt-in per integrator (n8n only)
+ok 57 - inbound failure propagation at the controller is opt-in per integrator (n8n only)
+  ---
+  duration_ms: 2.3665
+  type: 'test'
+  ...
+# Subtest: durable n8n delivery is isolated from best-effort chatbot effects
+ok 58 - durable n8n delivery is isolated from best-effort chatbot effects
+  ---
+  duration_ms: 4.7007
+  type: 'test'
+  ...
+# Subtest: Chatwoot edit revisions have stable identities distinct from the original WAID
+ok 59 - Chatwoot edit revisions have stable identities distinct from the original WAID
+  ---
+  duration_ms: 0.891
+  type: 'test'
+  ...
+# Subtest: route instanceName wins over query and prevents cross-tenant retargeting
+ok 60 - route instanceName wins over query and prevents cross-tenant retargeting
+  ---
+  duration_ms: 0.266
+  type: 'test'
+  ...
+# Subtest: Chatwoot uses WAID preflight and surfaces media delivery failures in enforce
+ok 61 - Chatwoot uses WAID preflight and surfaces media delivery failures in enforce
+  ---
+  duration_ms: 0.7548
+  type: 'test'
+  ...
+# Subtest: health stats expose fresh unique traffic separately from duplicate replays
+ok 62 - health stats expose fresh unique traffic separately from duplicate replays
+  ---
+  duration_ms: 0.3239
+  type: 'test'
+  ...
+# Subtest: Chatwoot failure is persisted and does not prevent the following n8n sink
+ok 63 - Chatwoot failure is persisted and does not prevent the following n8n sink
+  ---
+  duration_ms: 1.8135
+  type: 'test'
+  ...
+# Subtest: fencing failure rejects instead of pretending the sink was recorded
+ok 64 - fencing failure rejects instead of pretending the sink was recorded
+  ---
+  duration_ms: 0.8782
+  type: 'test'
+  ...
+# Subtest: debounce delivers every provider ID, content and timestamp in arrival order, with isolated snapshots
+ok 65 - debounce delivers every provider ID, content and timestamp in arrival order, with isolated snapshots
+  ---
+  duration_ms: 18.6797
+  type: 'test'
+  ...
+# Subtest: two audios retain their own source, transcription and time around a text, without raw media keys in the payload
+ok 66 - two audios retain their own source, transcription and time around a text, without raw media keys in the payload
+  ---
+  duration_ms: 0.6893
+  type: 'test'
+  ...
+# Subtest: audio failure retains its own event and marks it unavailable without copying the next transcription
+ok 67 - audio failure retains its own event and marks it unavailable without copying the next transcription
+  ---
+  duration_ms: 0.2808
+  type: 'test'
+  ...
+# Subtest: already transcribed audio does not request transcription again
+ok 68 - already transcribed audio does not request transcription again
+  ---
+  duration_ms: 0.1526
+  type: 'test'
+  ...
+# Subtest: missing, invalid or unsafe provider timestamps never become the current time
+ok 69 - missing, invalid or unsafe provider timestamps never become the current time
+  ---
+  duration_ms: 0.2372
+  type: 'test'
+  ...
+# Subtest: actual N8nService posts individual text/audio events, retains live ownerLid and rejects incomplete batches
+ok 70 - actual N8nService posts individual text/audio events, retains live ownerLid and rejects incomplete batches
+  ---
+  duration_ms: 82.8483
+  type: 'test'
+  ...
+# Subtest: number destination enriches a returned LID key and number query finds it
+ok 71 - number destination enriches a returned LID key and number query finds it
+  ---
+  duration_ms: 3.0804
+  type: 'test'
+  ...
+# Subtest: Baileys PN and cache candidates enrich an outgoing LID echo
+ok 72 - Baileys PN and cache candidates enrich an outgoing LID echo
+  ---
+  duration_ms: 0.3646
+  type: 'test'
+  ...
+# Subtest: groups, broadcasts, inbound and unknown numbers remain unchanged
+ok 73 - groups, broadcasts, inbound and unknown numbers remain unchanged
+  ---
+  duration_ms: 0.1872
+  type: 'test'
+  ...
+# Subtest: query without a JID keeps the unfiltered behavior
+ok 74 - query without a JID keeps the unfiltered behavior
+  ---
+  duration_ms: 0.1936
+  type: 'test'
+  ...
+# Subtest: both persistence paths enrich before writing; fetch applies the same OR to count and results
+ok 75 - both persistence paths enrich before writing; fetch applies the same OR to count and results
+  ---
+  duration_ms: 1.2033
+  type: 'test'
+  ...
+# [Evolution API]  8456 - Sat Nov 07 2026 22:16:21   ERROR  [S3 Service] [object] Error: AccessDenied
+#     at TestContext.<anonymous> (C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-storage.test.ts:82:16)
+#     at Test.runInAsyncScope (node:async_hooks:227:14)
+#     at Test.run (node:internal/test_runner/test:1402:25)
+#     at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+#     at Test.postRun (node:internal/test_runner/test:1542:19)
+#     at Test.run (node:internal/test_runner/test:1467:12)
+#     at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+# [Evolution API]  8456 - Sat Nov 07 2026 22:16:21   ERROR  [S3 Service] [object] Error: AccessDenied
+#     at TestContext.<anonymous> (C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-storage.test.ts:82:16)
+#     at Test.runInAsyncScope (node:async_hooks:227:14)
+#     at Test.run (node:internal/test_runner/test:1402:25)
+#     at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+#     at Test.postRun (node:internal/test_runner/test:1542:19)
+#     at Test.run (node:internal/test_runner/test:1467:12)
+#     at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+# Subtest: AWS endpoints use virtual-host style; anything else is path style (minio parity)
+ok 76 - AWS endpoints use virtual-host style; anything else is path style (minio parity)
+  ---
+  duration_ms: 1.1155
+  type: 'test'
+  ...
+# Subtest: uploadFile stores under evolution-api/ with Content-Type as header and the rest as metadata
+ok 77 - uploadFile stores under evolution-api/ with Content-Type as header and the rest as metadata
+  ---
+  duration_ms: 1.6182
+  type: 'test'
+  ...
+# Subtest: uploadTempFile keeps the caller folder; streams pass ContentLength through
+ok 78 - uploadTempFile keeps the caller folder; streams pass ContentLength through
+  ---
+  duration_ms: 0.3853
+  type: 'test'
+  ...
+# Subtest: upload and delete errors are logged and returned, never thrown (caller contract)
+ok 79 - upload and delete errors are logged and returned, never thrown (caller contract)
+  ---
+  duration_ms: 3.5157
+  type: 'test'
+  ...
+# [Evolution API]  8456 - Sat Nov 07 2026 22:16:21   INFO  [S3 Service] [string] S3 Bucket evolution-media-test - ON
+# [Evolution API]  8456 - Sat Nov 07 2026 22:16:21   INFO  [S3 Service] [string] S3 Bucket evolution-media-test - ON
+# Subtest: getObjectUrl presigns evolution-api/<file> for 7 days by default and caps custom expiry at 7 days
+ok 80 - getObjectUrl presigns evolution-api/<file> for 7 days by default and caps custom expiry at 7 days
+  ---
+  duration_ms: 29.6449
+  type: 'test'
+  ...
+# Subtest: createBucket: existing bucket only gets the public-read policy; missing bucket is created first
+ok 81 - createBucket: existing bucket only gets the public-read policy; missing bucket is created first
+  ---
+  duration_ms: 0.9333
+  type: 'test'
+  ...
+# Subtest: disabled storage: every function is a no-op returning undefined
+ok 82 - disabled storage: every function is a no-op returning undefined
+  ---
+  duration_ms: 0.169
+  type: 'test'
+  ...
+1..82
+# tests 82
+# suites 0
+# pass 82
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9891.7545

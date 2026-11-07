@@ -1,0 +1,193 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>🗂️ Plano e prova — S3 independente da plataforma (#1070)</title><style>
+:root{color-scheme:dark;--bg:#090d19;--card:#111a2d;--ink:#eaf0ff;--muted:#afbed6;--line:#2b3a57;--cyan:#58dfd0;--violet:#bba2ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#222040 0,transparent 55%),var(--bg);color:var(--ink);font:16px/1.7 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:48px 28px 80px}header{padding:28px 32px;background:linear-gradient(125deg,#243656,#292044);border:1px solid #52628b;border-radius:22px;margin-bottom:32px}.eyebrow{color:var(--cyan);letter-spacing:.17em;font-size:12px;font-weight:800;text-transform:uppercase}.hero{font-size:clamp(28px,5vw,49px);line-height:1.12;margin:12px 0 18px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:24px}.stat{border:1px solid #51617f;padding:14px;border-radius:12px;background:#0d182870}.stat b{display:block;font-size:27px;color:var(--cyan)}.stat span{font-size:13px;color:#ced7ea}h1{font-size:30px;line-height:1.3}h2{font-size:23px;line-height:1.4;border-top:1px solid var(--line);padding-top:30px;margin-top:40px;color:var(--violet)}h3{font-size:19px;color:var(--cyan)}p,li{color:var(--muted)}strong{color:var(--ink)}a{color:var(--cyan);text-underline-offset:4px}table{display:block;overflow:auto;border-collapse:collapse;width:100%;margin:24px 0;font-size:14px}th,td{border:1px solid var(--line);padding:13px 15px;text-align:left;vertical-align:top}th{background:#233150;color:var(--ink)}td{background:#111a2dcc;color:var(--muted)}tr:nth-child(even) td{background:#17223ccc}code{font:13px/1.6 ui-monospace,Consolas,monospace;color:#bde6ff;overflow-wrap:anywhere}pre{padding:20px;border-radius:12px;border:1px solid var(--line);background:#050b15;overflow:auto}pre code{white-space:pre}blockquote{margin:24px 0;border-left:4px solid var(--cyan);padding:10px 22px;background:var(--card)}.source{margin:0 0 30px;color:var(--muted);font-size:13px}.badge{display:inline-block;border:1px solid #6b5b29;background:#4d3b153d;color:#ffdb85;padding:4px 12px;border-radius:99px;font-size:12px}footer{margin-top:50px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}@media(max-width:660px){main{padding:24px 16px}.grid{grid-template-columns:1fr}header{padding:24px}th,td{min-width:130px}h1{font-size:25px}}@media print{body{background:white;color:#182035}main{max-width:none;padding:0}header,.stat,th,td{background:#f1f4fa;color:#182035}p,li{color:#24344d}h2,strong{color:#182035}pre{background:#f1f4fa}code{color:#24344d}}
+</style></head><body><main><header><div class="eyebrow">Nex · Pauta 3 · Elysium #1070 · Evolution API</div><div class="hero">Chaves iguais<br>em qualquer sistema 🗂️</div><span class="badge">Código offline · revisão independente pendente</span><div class="grid"><div class="stat"><b>4 → 0</b><span>Falhas S3 de separador no Windows</span></div><div class="stat"><b>82 / 82</b><span>Contratos inbox, sem AWS/serviços</span></div><div class="stat"><b>CJS + ESM</b><span>Builds seriais · heap limitado</span></div></div></header><p class="source">📄 Fonte canônica: <a href="PLANO.md">PLANO.md</a> · HTML da mesma fonte, CSS inline e zero dependências externas.</p><article><h1>🗂️ Plano e prova — S3 independente da plataforma (#1070)</h1>
+<p><strong>Estado:</strong> correção implementada e verificada localmente; revisão independente pendente.
+Terceira entrega da rodada 4 de nex-serie-trilha-sol, gpt-6.1-sol high, sem subagentes.
+Origem: <a href="https://github.com/xmacna/elysium/issues/1070">Elysium #1070</a>, FILA-AUTORIZADA/Pauta 3.
+O fork Evolution tem issues desativadas. Branch <code>nex/s3-object-keys-1070-20261107</code>,
+clone próprio <code>evolution-s3-1070-nex</code>, base main <code>6b93af39399f01a17aa421b0a235d82c41c6e4c9</code>.
+PRs/task-claims conferidos antes da reserva; sem duplicar os donos de #1061/#244.</p>
+<h2>✅ Critério e resultado</h2>
+<ul>
+<li>[x] Reproduzir as quatro falhas de chave S3 no Windows, cliente falso e assinatura local.</li>
+<li>[x] Usar separador <code>/</code> em upload, temporário, URL assinada e exclusão, preservando Linux.</li>
+<li>[x] Preservar metadata, ContentLength, expiração, disabled e retorno de erros.</li>
+<li>[x] Inbox 82/82, lint do arquivo após correção de EOL, typecheck e builds CJS/ESM.</li>
+<li>[x] Prova remota MD/HTML e manifesto no SHA final; solicitação de revisão na fila Nex.</li>
+<li>[ ] Revisão independente no SHA final; nenhuma autoaprovação, merge ou deploy.</li>
+</ul>
+<h2>🔎 Diagnóstico e correção</h2>
+<p>O backend usava <code>path.join</code>, cujo separador é nativo do sistema. No Windows,
+<code>evolution-api</code> + <code>inst/audio/x.ogg</code> produzia <code>evolution-api\inst\audio\x.ogg</code>.
+O problema já existia no <code>PutObjectCommand</code>, antes de qualquer chamada/assinatura AWS.</p>
+<table>
+<thead>
+<tr>
+<th>Hipótese</th>
+<th>Previsão e evidência</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Composição nativa da chave</td>
+<td><code>path.join</code> introduz barras invertidas; o probe nativo/POSIX confirmou os quatro casos.</td>
+</tr>
+<tr>
+<td>2. Codificação do SDK</td>
+<td>Não explica as três falhas que já aparecem no comando falso antes da assinatura.</td>
+</tr>
+<tr>
+<td>3. Entrada alterada pelo chamador</td>
+<td>Os testes fornecem <code>a</code>, <code>y.bin</code> e paths com <code>/</code>; o separador surge ao juntar os segmentos.</td>
+</tr>
+</tbody>
+</table>
+<p>Troca mínima no backend: <code>path.posix.join</code> nos quatro pontos. Nenhum outro
+comportamento de storage foi alterado. O conjunto S3 existente já captura o
+bug nesta plataforma: baseline <strong>3/7</strong>, com quatro diferenças de separador;
+candidato <strong>7/7</strong> dentro dos 82 testes da inbox. O arquivo S3 de testes conserva
+o mesmo hash LF entre baseline e candidato; não se enfraqueceram assertivas.</p>
+<table>
+<thead>
+<tr>
+<th>Operação</th>
+<th>Baseline Windows</th>
+<th>Candidato</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Upload</td>
+<td><code>evolution-api\inst\audio\x.ogg</code></td>
+<td><code>evolution-api/inst/audio/x.ogg</code></td>
+</tr>
+<tr>
+<td>Temporário</td>
+<td><code>tmp\y.bin</code></td>
+<td><code>tmp/y.bin</code></td>
+</tr>
+<tr>
+<td>Exclusão</td>
+<td><code>evolution-api\a</code></td>
+<td><code>evolution-api/a</code></td>
+</tr>
+<tr>
+<td>URL assinada</td>
+<td><code>/evolution-api%5Cinst%5Cimg.jpg</code></td>
+<td><code>/evolution-api/inst/img.jpg</code></td>
+</tr>
+</tbody>
+</table>
+<h2>🧪 Prova e isolamento</h2>
+<p>Node <strong>v24.22.2</strong> no Nex/Windows; o Node padrão 22 não foi usado nos checks.
+O lockfile local é idêntico ao das dependências já instaladas; node_modules é
+uma junction somente de leitura operacional para reutilizá-las. Nenhum npm ci,
+Prisma generate, install hook, servidor ou migração foi executado.</p>
+<p>O teste S3 importa uma exceção que, por ciclo de imports, carregaria o roteador
+e provedores WhatsApp. <code>test/helpers/s3-offline-preload.cjs</code> entrega <strong>somente o
+HttpStatus lido do enum real</strong> a esses módulos de exceção. Mantém reais backend,
+SDK, ConfigService, Logger e as classes de exceção. HTTP/TCP são bloqueados;
+só o pipe local exato de IPC do tsx no Windows é permitido. Uma tentativa de
+rede inesperada falha o processo. A prova final da inbox não contém bloqueios
+de rede nem rejeições assíncronas.</p>
+<p>O gate completo revelou ainda uma fixture existente que fazia <code>import()</code> de
+um path Windows. Ela agora usa <code>pathToFileURL(outfile).href</code>; os mocks e
+assertivas do serviço n8n permanecem iguais. É uma correção do transporte da
+fixture, sem mudança produtiva no n8n.</p>
+<table>
+<thead>
+<tr>
+<th>Check final</th>
+<th style="text-align: right;">Exit</th>
+<th style="text-align: right;">Tempo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>inbox</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">10.14 s</td>
+</tr>
+<tr>
+<td>lint-target</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">135.45 s</td>
+</tr>
+<tr>
+<td>typecheck</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">16.42 s</td>
+</tr>
+<tr>
+<td>build-cjs</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">40.50 s</td>
+</tr>
+<tr>
+<td>build-esm</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">17.55 s</td>
+</tr>
+</tbody>
+</table>
+<p>O lint geral inicial apontou sete erros <strong>somente no arquivo S3 alterado</strong>,
+por EOL misto. Após normalização, o lint focado passou. Não se repetiu o scan
+dos demais arquivos. O hash normalizado LF e o JavaScript CommonJS compilado
+permaneceram idênticos após a formatação, preservando a prova 82/82 já obtida.
+Typecheck e builds usam o arquivo final. Nenhum teste verde foi repetido por espera.</p>
+<p>O ESM encerrou inicialmente com status nativo Windows <code>3221226505</code>, sem erro
+TypeScript. Somente essa etapa foi repetida, retirando o preload de testes do
+processo de build; passou em 17.55 s.
+Fonte, fixture e heap permaneceram iguais. Isso não prova a causa do erro
+nativo; a tentativa anterior está preservada no manifesto/log. As demais
+etapas verdes não foram repetidas. O preload não é requisito do build.</p>
+<p>Reserva inicial da etapa final: 2.174 GiB,
+BelowNormal, heap 768 MiB, V8 pool/UV threadpool/GOMAXPROCS em 1.
+Lock global exclusivo, adquirido antes dos processos e liberado ao concluir.
+Builds por formato em série, conforme limite de memória deste Nex; saída local
+em dist, fora do commit. Os checks PostgreSQL e compatibilidade com servidores
+HTTP sintéticos não foram executados localmente; o workflow existente os cobre
+no CI. CI remota ainda não atestada neste relatório.</p>
+<p><a href="prova.json">Manifesto JSON</a> contém ambiente, comandos, tempos, hashes de fonte,
+teste e logs. <a href="evidence/s3-red-v3-s3-baseline.tap">Baseline TAP</a> ·
+<a href="evidence/s3-green-v2-inbox.tap">Inbox final TAP</a>. Os logs são
+fixtures sintéticas; não há credencial ou objeto de cliente.</p>
+<h2>🔁 Reprodução limitada</h2>
+<p>Com Node24, dependências do lockfile e lock global/reserva antes dos comandos:</p>
+<pre><code class="language-powershell">$env:NODE_OPTIONS='--max-old-space-size=768 --v8-pool-size=1 --require=./test/helpers/s3-offline-preload.cjs'
+$env:S3_ENABLED='false'
+$env:TELEMETRY_ENABLED='false'
+$env:SENTRY_DSN=''
+$env:DATABASE_PROVIDER='postgresql'
+$env:GOMAXPROCS='1'
+$env:UV_THREADPOOL_SIZE='1'
+$files = (((Get-Content package.json -Raw | ConvertFrom-Json).scripts.'test:xmacna-inbox' -split ' ') | Select-Object -Skip 2)
+node node_modules/tsx/dist/cli.mjs --test --test-reporter=tap --test-concurrency=1 @files
+node node_modules/eslint/bin/eslint.js src/api/integrations/storage/s3/libs/minio.server.ts
+node node_modules/typescript/bin/tsc --noEmit
+node node_modules/tsup/dist/cli-default.js --format cjs
+$env:NODE_OPTIONS='--max-old-space-size=768 --v8-pool-size=1'
+node node_modules/tsup/dist/cli-default.js --format esm --no-clean
+</code></pre>
+<p>O preload é um executor offline de teste para Windows, não uma configuração de
+produção. O CI existente executa suas próprias fixtures em Linux; os workflows
+inspecionados fazem qualidade/segurança, sem rito de release ou deploy.
+Não rerodar os mesmos checks sem mudança, novo achado ou outra plataforma necessária.</p>
+<h2>🧭 Impacto e limites</h2>
+<p>Sem migração de banco. Chaves Linux preservadas. Objetos anteriormente gravados
+no Windows com barras invertidas não são migrados por esta PR. Nenhum bucket,
+AWS, canário, app, bot, cliente, serviço, produção, merge ou deploy foi operado.
+A revisão independente avalia este SHA, sem herdar aprovações de outras PRs.</p>
+<h2>➡️ Próximo item concreto — outra rodada</h2>
+<p><a href="https://github.com/xmacna/elysium/issues/640">Elysium #640</a>, código em Olympus:
+<code>projetos/services/src/cache/redis-client-manager.ts</code> ainda desconecta e recria
+o cliente imediatamente dentro do handler de erro na main inspecionada.
+Sem PR de correção correspondente; posse futura reservada em task-claims:
+<code>olympus-redis-640-nex</code>, branch <code>nex/redis-error-backoff-640-20261107</code>.</p>
+<p>Pronto: Redis/logger/relógio falsos, 60 s simulados sem recriar clientes em loop
+e com ≤10 logs; retry com teto e opções explícitas preservadas; combined.log
+limitado; checks pertinentes e PR MD/HTML. Sem Redis real, im-gateway, serviço,
+configurações privadas, Prumo/Nyx ou deploy. Não iniciar quarta entrega nesta rodada.
+Origem: FILA/Pauta3 e issue640 aberta. A #537 já pertence ao nex-skills-sol e
+foi entregue na PR1075; a leitura de inventário local não virou implementação.</p></article><footer>🔒 Sem bucket real, migração, serviço, cliente, merge ou deploy. Relatório interno · 07/11/2026.</footer></main></body></html>

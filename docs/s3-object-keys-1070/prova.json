@@ -1,0 +1,357 @@
+{
+  "issue": "https://github.com/xmacna/elysium/issues/1070",
+  "baseline": {
+    "mode": "red",
+    "attempt": "v3",
+    "ts": "2026-11-07T21:13:43.450886+00:00",
+    "resources": {
+      "free_commit_gib": 3.38,
+      "priority": "16384",
+      "numeric_threads": 1
+    },
+    "lock_owner": {
+      "agent": "nex-serie-trilha-sol",
+      "pid": 19268,
+      "ts": "2026-11-07T21:13:43.2476454Z",
+      "purpose": "rodada4-s3-1070"
+    },
+    "node": "v24.22.2",
+    "base_sha": "6b93af39399f01a17aa421b0a235d82c41c6e4c9",
+    "env_limits": {
+      "heap_mb": 768,
+      "v8_pool": 1,
+      "uv_threadpool": 1,
+      "gomaxprocs": 1
+    },
+    "checks": [
+      {
+        "name": "s3-baseline",
+        "exit_code": 1,
+        "seconds": 0.91,
+        "command": [
+          "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+          "node_modules/tsx/dist/cli.mjs",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "test/xmacna-s3-storage.test.ts"
+        ],
+        "log": "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\s3-red-v3-s3-baseline.log",
+        "log_sha256": "fc986987126b07d9caeb4febf798f471512c242ac63c808c7242adcdbd3fbc79",
+        "tap": {
+          "tests": 7,
+          "suites": 0,
+          "pass": 3,
+          "fail": 4,
+          "skipped": 0
+        }
+      }
+    ],
+    "source_sha256_lf": "0af9d2cf60191871b971615886b3f02449e27cd409f39036d7bf3a8f9b73b130",
+    "tests_sha256_lf": "9eb9908f1519875d0ff37846aced6c85e4e3d124b58aca45ac07bc70adfefdf8",
+    "finalizado_ts": "2026-11-07T21:13:44.442437+00:00"
+  },
+  "inbox_candidate": {
+    "mode": "green",
+    "attempt": "v2",
+    "ts": "2026-11-07T21:16:11.480935+00:00",
+    "resources": {
+      "free_commit_gib": 3.306,
+      "priority": "16384",
+      "numeric_threads": 1
+    },
+    "lock_owner": {
+      "agent": "nex-serie-trilha-sol",
+      "pid": 28292,
+      "ts": "2026-11-07T21:16:11.2640464Z",
+      "purpose": "rodada4-s3-1070"
+    },
+    "node": "v24.22.2",
+    "base_sha": "6b93af39399f01a17aa421b0a235d82c41c6e4c9",
+    "env_limits": {
+      "heap_mb": 768,
+      "v8_pool": 1,
+      "uv_threadpool": 1,
+      "gomaxprocs": 1
+    },
+    "checks": [
+      {
+        "name": "inbox",
+        "exit_code": 0,
+        "seconds": 10.14,
+        "command": [
+          "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+          "node_modules/tsx/dist/cli.mjs",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "test/xmacna-s3-storage.test.ts",
+          "test/xmacna-inbound-inbox.test.ts",
+          "test/xmacna-inbound-sink-dispatch.test.ts",
+          "test/xmacna-inbound-service-contracts.test.ts",
+          "test/xmacna-baileys-message-processor.test.ts",
+          "test/xmacna-chatbot-debounce.test.ts",
+          "test/xmacna-outgoing-lid.test.ts",
+          "test/xmacna-inbound-identity.test.ts",
+          "test/xmacna-inbound-media-upload.test.ts",
+          "test/xmacna-inbound-media-guard.test.ts",
+          "test/xmacna-get-conversation-message.test.ts",
+          "test/xmacna-chatwoot-group-participant.test.ts",
+          "test/xmacna-n8n-individual-messages.test.ts",
+          "test/xmacna-n8n-individual-service.test.ts"
+        ],
+        "log": "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\s3-green-v2-inbox.log",
+        "log_sha256": "b791483eb54e1e87bdc375b59cf411206603340e2081742a90f739555d54a192",
+        "tap": {
+          "tests": 82,
+          "suites": 0,
+          "pass": 82,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      {
+        "name": "lint",
+        "exit_code": 1,
+        "seconds": 180.76,
+        "command": [
+          "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+          "node_modules/eslint/bin/eslint.js",
+          "--ext",
+          ".ts",
+          "src"
+        ],
+        "log": "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\s3-green-v2-lint.log",
+        "log_sha256": "54ee514b0ceb395c1c12578b39e316297f064b217c45c85e376cdbbfe00520d1",
+        "tap": {}
+      }
+    ]
+  },
+  "remaining_checks": {
+    "mode": "green",
+    "attempt": "v3",
+    "ts": "2026-11-07T21:25:34.181415+00:00",
+    "resources": {
+      "free_commit_gib": 2.174,
+      "priority": "16384",
+      "numeric_threads": 1
+    },
+    "lock_owner": {
+      "agent": "nex-serie-trilha-sol",
+      "pid": 4856,
+      "ts": "2026-11-07T21:25:29.9188034Z",
+      "purpose": "rodada4-s3-1070"
+    },
+    "node": "v24.22.2",
+    "base_sha": "6b93af39399f01a17aa421b0a235d82c41c6e4c9",
+    "env_limits": {
+      "heap_mb": 768,
+      "v8_pool": 1,
+      "uv_threadpool": 1,
+      "gomaxprocs": 1
+    },
+    "checks": [
+      {
+        "name": "lint-target",
+        "exit_code": 0,
+        "seconds": 135.45,
+        "command": [
+          "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+          "node_modules/eslint/bin/eslint.js",
+          "src/api/integrations/storage/s3/libs/minio.server.ts"
+        ],
+        "log": "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\s3-green-v3-lint-target.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tap": {}
+      },
+      {
+        "name": "typecheck",
+        "exit_code": 0,
+        "seconds": 16.42,
+        "command": [
+          "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+          "node_modules/typescript/bin/tsc",
+          "--noEmit"
+        ],
+        "log": "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\s3-green-v3-typecheck.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tap": {}
+      },
+      {
+        "name": "build-cjs",
+        "exit_code": 0,
+        "seconds": 40.5,
+        "command": [
+          "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+          "node_modules/tsup/dist/cli-default.js",
+          "--format",
+          "cjs"
+        ],
+        "log": "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\s3-green-v3-build-cjs.log",
+        "log_sha256": "807264f280b318692132e5ff193c482be145d7d408a925445605e8e7effa2f13",
+        "tap": {}
+      },
+      {
+        "name": "build-esm",
+        "exit_code": 0,
+        "seconds": 17.55,
+        "command": [
+          "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+          "node_modules/tsup/dist/cli-default.js",
+          "--format",
+          "esm",
+          "--no-clean"
+        ],
+        "log": "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\s3-green-v4-build-esm.log",
+        "log_sha256": "978cb21893c53945d8a3246df8a8792d9fd32a5c4ed30d7fe8cd76b33378c876",
+        "tap": {}
+      }
+    ],
+    "source_sha256_lf": "7ce3705d7321ec43c795921de61a02ce6e94402f08ec526a106fce68c6634b3c",
+    "tests_sha256_lf": "9eb9908f1519875d0ff37846aced6c85e4e3d124b58aca45ac07bc70adfefdf8",
+    "support_sha256_lf": {
+      "test/helpers/s3-offline-preload.cjs": "49ce3424a0b65c12295be17a7f0a1f86d1788ce977d846a898428ffb58dcd2be",
+      "test/xmacna-n8n-individual-service.test.ts": "7ee323cee67eba4060e865db8654a5542fde3195c177e11d34cd1ba0003541ec"
+    },
+    "finalizado_ts": "2026-11-07T21:29:11.665146+00:00",
+    "initial_esm_failure": {
+      "name": "build-esm",
+      "exit_code": 3221226505,
+      "seconds": 8.5,
+      "command": [
+        "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+        "node_modules/tsup/dist/cli-default.js",
+        "--format",
+        "esm",
+        "--no-clean"
+      ],
+      "log": "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\s3-green-v3-build-esm.log",
+      "log_sha256": "8eb5af4e5b1c09b415cf0bee8e571ce3a0b73d460902fe667c792b9ca7c319ed",
+      "tap": {}
+    },
+    "esm_retry": {
+      "mode": "green",
+      "attempt": "v4",
+      "ts": "2026-11-07T21:31:51.304972+00:00",
+      "resources": {
+        "free_commit_gib": 2.569,
+        "priority": "16384",
+        "numeric_threads": 1
+      },
+      "lock_owner": {
+        "agent": "nex-serie-trilha-sol",
+        "pid": 672,
+        "ts": "2026-11-07T21:31:50.6428406Z",
+        "purpose": "rodada4-s3-1070"
+      },
+      "node": "v24.22.2",
+      "base_sha": "6b93af39399f01a17aa421b0a235d82c41c6e4c9",
+      "env_limits": {
+        "heap_mb": 768,
+        "v8_pool": 1,
+        "uv_threadpool": 1,
+        "gomaxprocs": 1
+      },
+      "checks": [
+        {
+          "name": "build-esm",
+          "exit_code": 0,
+          "seconds": 17.55,
+          "command": [
+            "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-elysium-fixes-sol\\node24\\node.exe",
+            "node_modules/tsup/dist/cli-default.js",
+            "--format",
+            "esm",
+            "--no-clean"
+          ],
+          "log": "C:\\Users\\Lucca Galaxy Book\\bootstrap\\nex-night-20261107\\nex-serie-trilha-sol\\s3-green-v4-build-esm.log",
+          "log_sha256": "978cb21893c53945d8a3246df8a8792d9fd32a5c4ed30d7fe8cd76b33378c876",
+          "tap": {}
+        }
+      ],
+      "source_sha256_lf": "7ce3705d7321ec43c795921de61a02ce6e94402f08ec526a106fce68c6634b3c",
+      "tests_sha256_lf": "9eb9908f1519875d0ff37846aced6c85e4e3d124b58aca45ac07bc70adfefdf8",
+      "support_sha256_lf": {
+        "test/helpers/s3-offline-preload.cjs": "49ce3424a0b65c12295be17a7f0a1f86d1788ce977d846a898428ffb58dcd2be",
+        "test/xmacna-n8n-individual-service.test.ts": "7ee323cee67eba4060e865db8654a5542fde3195c177e11d34cd1ba0003541ec"
+      },
+      "finalizado_ts": "2026-11-07T21:32:09.712944+00:00"
+    }
+  },
+  "format_only": {
+    "compiled_commonjs_identical": true,
+    "source_sha256_before": "7ce3705d7321ec43c795921de61a02ce6e94402f08ec526a106fce68c6634b3c",
+    "source_sha256_after": "7ce3705d7321ec43c795921de61a02ce6e94402f08ec526a106fce68c6634b3c"
+  },
+  "evidence_files": [
+    {
+      "name": "s3-baseline",
+      "file": "evidence/s3-red-v3-s3-baseline.tap",
+      "sha256": "fc986987126b07d9caeb4febf798f471512c242ac63c808c7242adcdbd3fbc79",
+      "exit_code": 1,
+      "seconds": 0.91
+    },
+    {
+      "name": "inbox",
+      "file": "evidence/s3-green-v2-inbox.tap",
+      "sha256": "b791483eb54e1e87bdc375b59cf411206603340e2081742a90f739555d54a192",
+      "exit_code": 0,
+      "seconds": 10.14
+    },
+    {
+      "name": "lint",
+      "file": "evidence/s3-green-v2-lint.txt",
+      "sha256": "54ee514b0ceb395c1c12578b39e316297f064b217c45c85e376cdbbfe00520d1",
+      "exit_code": 1,
+      "seconds": 180.76
+    },
+    {
+      "name": "lint-target",
+      "file": "evidence/s3-green-v3-lint-target.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit_code": 0,
+      "seconds": 135.45
+    },
+    {
+      "name": "typecheck",
+      "file": "evidence/s3-green-v3-typecheck.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit_code": 0,
+      "seconds": 16.42
+    },
+    {
+      "name": "build-cjs",
+      "file": "evidence/s3-green-v3-build-cjs.txt",
+      "sha256": "807264f280b318692132e5ff193c482be145d7d408a925445605e8e7effa2f13",
+      "exit_code": 0,
+      "seconds": 40.5
+    },
+    {
+      "name": "build-esm",
+      "file": "evidence/s3-green-v4-build-esm.txt",
+      "sha256": "978cb21893c53945d8a3246df8a8792d9fd32a5c4ed30d7fe8cd76b33378c876",
+      "exit_code": 0,
+      "seconds": 17.55
+    },
+    {
+      "name": "build-esm",
+      "file": "evidence/s3-green-v3-build-esm.txt",
+      "sha256": "8eb5af4e5b1c09b415cf0bee8e571ce3a0b73d460902fe667c792b9ca7c319ed",
+      "exit_code": 3221226505,
+      "seconds": 8.5
+    }
+  ],
+  "next_item": {
+    "ts": "2026-11-07T21:25:58.451550+00:00",
+    "agent": "nex-serie-trilha-sol",
+    "repo": "xmacna/olympus",
+    "item": "issue640-redis-error-backoff-offline",
+    "status": "reserved",
+    "branch": "nex/redis-error-backoff-640-20261107",
+    "path": "C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\olympus-redis-640-nex",
+    "scope": "Próxima rodada apenas: RedisClientManager não recria em error; preservar retryStrategy, limitar log e rotação de combined.log. Fakes de Redis/logger/clock, sem Redis real, im-gateway, cliente ou deploy. Preservar Prumo/Nyx/configurações da PR151.",
+    "origin": "https://github.com/xmacna/elysium/issues/640; FILA/Pauta3; fonte main Olympus conferida e sem PR correspondente.",
+    "criterion": "Eventos de erro sintéticos por 60s não criam clientes em loop e geram <=10 logs; backoff tem teto e opções explícitas preservadas; log de arquivo limitado; testes/checks pertinentes e PR MD/HTML.",
+    "source_sha256": "5e233a30d7d1be51db068bcbb13459a98c064c70c78305f873a81033d25822d0"
+  }
+}

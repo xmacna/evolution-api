@@ -12,7 +12,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ConfigService, S3 } from '@config/env.config';
 import { Logger } from '@config/logger.config';
 import { BadRequestException } from '@exceptions';
-import { join } from 'path';
+import { posix } from 'path';
 import { Readable, Transform } from 'stream';
 
 // xmacna/elysium#518 (2026-09-14): this module used to wrap the `minio` client. The only
@@ -143,7 +143,8 @@ export function createS3Backend(bucket: S3, client: S3Sender | undefined) {
     metadata: Metadata,
   ) => {
     if (client) {
-      const objectName = join('evolution-api', fileName);
+      // S3 keys use '/' on every host; they are not local filesystem paths.
+      const objectName = posix.join('evolution-api', fileName);
       try {
         return await putObject(objectName, file, size, metadata);
       } catch (error) {
@@ -156,7 +157,7 @@ export function createS3Backend(bucket: S3, client: S3Sender | undefined) {
   const getObjectUrl = async (fileName: string, expiry?: number) => {
     if (client) {
       try {
-        const objectName = join('evolution-api', fileName);
+        const objectName = posix.join('evolution-api', fileName);
         const expiresIn =
           expiry && expiry > 0 ? Math.min(expiry, DEFAULT_PRESIGN_EXPIRY_SECONDS) : DEFAULT_PRESIGN_EXPIRY_SECONDS;
         return await getSignedUrl(client as S3Client, new GetObjectCommand({ Bucket: bucketName, Key: objectName }), {
@@ -176,7 +177,7 @@ export function createS3Backend(bucket: S3, client: S3Sender | undefined) {
     metadata: Metadata,
   ) => {
     if (client) {
-      const objectName = join(folder, fileName);
+      const objectName = posix.join(folder, fileName);
       try {
         return await putObject(objectName, file, size, metadata);
       } catch (error) {
@@ -188,7 +189,7 @@ export function createS3Backend(bucket: S3, client: S3Sender | undefined) {
 
   const deleteFile = async (folder: string, fileName: string) => {
     if (client) {
-      const objectName = join(folder, fileName);
+      const objectName = posix.join(folder, fileName);
       try {
         return await client.send(new DeleteObjectCommand({ Bucket: bucketName, Key: objectName }));
       } catch (error) {

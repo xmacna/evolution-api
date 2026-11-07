@@ -1,0 +1,13 @@
+
+C:\Users\Lucca Galaxy Book\work\nex-night-20261107\evolution-s3-1070-nex\src\api\integrations\storage\s3\libs\minio.server.ts
+    1:1   error  Run autofix to sort these imports!  simple-import-sort/imports
+   15:30  error  Insert `␍`                          prettier/prettier
+  146:77  error  Insert `␍`                          prettier/prettier
+  147:64  error  Insert `␍`                          prettier/prettier
+  160:66  error  Insert `␍`                          prettier/prettier
+  180:55  error  Insert `␍`                          prettier/prettier
+  192:55  error  Insert `␍`                          prettier/prettier
+
+✖ 7 problems (7 errors, 0 warnings)
+  7 errors and 0 warnings potentially fixable with the `--fix` option.
+
