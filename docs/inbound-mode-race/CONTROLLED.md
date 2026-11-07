@@ -35,6 +35,10 @@ The package script includes the new file after the two existing PostgreSQL test 
 
 Hypothesis1 was not observed in these interleavings. Hypothesis2 (eight attempts exhausted under other contention) is not established or excluded. Hypothesis3 matches the measured cases. The original PR11 rejection remains **unreproduced and unexplained**; these results do not fix or approve PR11. No runtime change is justified by them. The old test and runtime are byte-identical to the base. Final documentation-only commit/check results and independent review requests are recorded in PR comments; no same-SHA CI rerun was requested.
 
+## Additional bounded exhaustion experiment
+
+A third fixture now tests hypothesis2 directly. After each real claim snapshot it commits actual off/enforce transitions before allowing the stale claim to insert a receipt. Eight such ordered cycles can exercise the unchanged eight-attempt boundary. No conflict/error is injected, retries are not shortened and the original single-race must-not-throw test remains untouched. This experiment explicitly models repeated mode changes, not the original single downgrade. Its native error provenance, outcomes and limits are published in the final PR proof after execution; they are not inferred from the two passing cases above. Even a matching escaped P2034 would show a possible exhaustion mechanism, not prove the cause of the old CI artifact.
+
 No runtime, schema, isolation, retry, tenant scope or dependency change. No local PostgreSQL/Docker or real account/service/customer access. This is Evolution inbox work, independent of Partenon#1066. A passing controlled test does not retroactively approve PR11 or transfer a build from another SHA. If the original exception is not reproduced, retain that limitation and continue independent executable work.
 
 [HTML](CONTROLLED.html) · [Plan](../../plans/nex-evolution/PLANO.md) · [Plan HTML](../../plans/nex-evolution/PLANO.html).

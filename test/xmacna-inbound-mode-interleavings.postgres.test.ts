@@ -38,7 +38,7 @@ type Failure = { role: string; attempt: number; code: unknown; constructor: stri
 function controlledRepository(
   repository: PrismaClient,
   role: 'claim' | 'downgrade',
-  gate: ReturnType<typeof barrier>,
+  gate: ReturnType<typeof barrier> | Array<ReturnType<typeof barrier>>,
   failures: Failure[],
 ) {
   let attempts = 0;
@@ -47,6 +47,7 @@ function controlledRepository(
     $transaction: async (operation: (tx: any) => Promise<unknown>, options: any) => {
       assert.equal(options.isolationLevel, Prisma.TransactionIsolationLevel.Serializable);
       const attempt = ++attempts;
+      const selectedGate = Array.isArray(gate) ? gate[attempt - 1] : attempt === 1 ? gate : undefined;
       try {
         return await repository.$transaction(async (tx) => {
           const proxy = new Proxy(tx, {
@@ -54,14 +55,14 @@ function controlledRepository(
               const delegate = Reflect.get(target, property);
               const model = role === 'claim' ? 'instance' : 'inboundReceipt';
               const method = role === 'claim' ? 'findUnique' : 'count';
-              if (property !== model || attempt !== 1) return delegate;
+              if (property !== model || !selectedGate) return delegate;
               return new Proxy(delegate, {
                 get(modelTarget, member) {
                   const original = Reflect.get(modelTarget, member);
                   if (member !== method) return typeof original === 'function' ? original.bind(modelTarget) : original;
                   return async (...args: unknown[]) => {
                     const result = await original.apply(modelTarget, args);
-                    await gate.hold(); // after the actual first snapshot read
+                    await selectedGate.hold(); // after the actual snapshot read
                     return result;
                   };
                 },
@@ -78,6 +79,56 @@ function controlledRepository(
     },
   };
 }
+
+test('eight real stale snapshots exhaust the existing retry budget under repeated mode changes',
+  { skip: !enabled, timeout: 25_000 }, async (t) => {
+    const repository = new PrismaClient();
+    const instanceName = `exhaustion-${randomUUID()}`;
+    const instanceScope = normalizeInstanceScope(instanceName);
+    const failures: Failure[] = [];
+    const gates = Array.from({ length: 8 }, (_, index) => barrier(`claim snapshot ${index + 1}`));
+    const claimRepo = controlledRepository(repository, 'claim', gates, failures);
+    let outcome: Promise<PromiseSettledResult<any>[]>;
+    try {
+      await repository.instance.create({ data: { id: instanceName, name: instanceName, inboundInboxMode: 'enforce' } });
+      const claim = new PrismaInboundInbox(claimRepo as any).claim({
+        sourceCluster, instanceId: instanceName, instanceScope,
+        contactScope: 'fixture@s.whatsapp.net', messageId: `message-${instanceName}`,
+        classification: 'real', payloadHash: 'b'.repeat(64), leaseOwner: 'exhaustion-worker',
+      }, 'enforce');
+      outcome = Promise.allSettled([claim]);
+      for (const gate of gates) {
+        await gate.ready;
+        // Actual mode transitions commit after each enforce snapshot. Re-enable
+        // before releasing claim so its next retry reads enforce again.
+        await transitionInboundMode(repository as any, instanceName, sourceCluster, 'off');
+        await transitionInboundMode(repository as any, instanceName, sourceCluster, 'enforce');
+        gate.release();
+      }
+      const [result] = await outcome;
+      assert.equal(result.status, 'rejected', 'continuous mode churn must not silently bypass bounded retries');
+      if (result.status !== 'rejected') assert.fail('expected the native conflict after eight attempts');
+      assert.ok(result.reason instanceof Prisma.PrismaClientKnownRequestError);
+      assert.equal(result.reason.code, 'P2034');
+      assert.equal(claimRepo.attempts, 8);
+      assert.equal(failures.length, 8);
+      for (let index = 0; index < failures.length; index++) {
+        assert.deepEqual(failures[index], { role: 'claim', attempt: index + 1, code: 'P2034',
+          constructor: 'PrismaClientKnownRequestError', known: true });
+      }
+      assert.equal(await repository.inboundReceipt.count({ where: { sourceCluster, instanceScope } }), 0);
+      assert.equal((await repository.instance.findUniqueOrThrow({ where: { id: instanceName } })).inboundInboxMode, 'enforce');
+      t.diagnostic(`[mode-race-exhaustion] ${JSON.stringify({ failures, attempts: claimRepo.attempts,
+        escaped: { code: result.reason.code, constructor: result.reason.constructor.name,
+          known: result.reason instanceof Prisma.PrismaClientKnownRequestError } })}`);
+    } finally {
+      for (const gate of gates) gate.release();
+      if (outcome) await outcome;
+      await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope } });
+      await repository.instance.deleteMany({ where: { id: instanceName } });
+      await repository.$disconnect();
+    }
+  });
 
 for (const winner of ['claim', 'downgrade'] as const) {
   test(`controlled first snapshots: ${winner} commits first`, { skip: !enabled, timeout: 20_000 }, async (t) => {
