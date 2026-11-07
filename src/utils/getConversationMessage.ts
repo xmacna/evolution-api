@@ -1,5 +1,7 @@
 import { configService, S3 } from '@config/env.config';
 
+import { getInteractiveResponseContent } from './interactiveResponseContent';
+
 const getTypeMessage = (msg: any) => {
   let mediaId: string;
 
@@ -25,6 +27,7 @@ const getTypeMessage = (msg: any) => {
     responseRowId: msg?.message?.listResponseMessage?.singleSelectReply?.selectedRowId,
     templateButtonReplyMessage:
       msg?.message?.templateButtonReplyMessage?.selectedId || msg?.message?.buttonsResponseMessage?.selectedButtonId,
+    interactiveResponseMessage: getInteractiveResponseContent(msg?.message?.interactiveResponseMessage),
     // Medias
     audioMessage: msg?.message?.speechToText
       ? msg?.message?.speechToText
