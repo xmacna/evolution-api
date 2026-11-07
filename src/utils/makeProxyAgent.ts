@@ -18,20 +18,26 @@ function selectProxyAgent(proxyUrl: string): HttpsProxyAgent<string> | SocksProx
   // When a proxy URL is used to build the URL object, the protocol returned by procotol's property contains a `:` at
   // the end so, we add the protocol constants without the `:` to avoid confusion.
   const PROXY_HTTP_PROTOCOL = 'http:';
+  const PROXY_HTTPS_PROTOCOL = 'https:';
   const PROXY_SOCKS_PROTOCOL = 'socks:';
+  const PROXY_SOCKS4_PROTOCOL = 'socks4:';
   const PROXY_SOCKS5_PROTOCOL = 'socks5:';
 
   switch (url.protocol) {
     case PROXY_HTTP_PROTOCOL:
+    case PROXY_HTTPS_PROTOCOL:
       return new HttpsProxyAgent(url);
     case PROXY_SOCKS_PROTOCOL:
+    case PROXY_SOCKS4_PROTOCOL:
     case PROXY_SOCKS5_PROTOCOL: {
       let urlSocks = '';
+      // Keep the existing SOCKS5 DNS policy; SOCKS4 must retain its wire version.
+      const socksProtocol = url.protocol === PROXY_SOCKS4_PROTOCOL ? 'socks4' : 'socks';
 
       if (url.username && url.password) {
-        urlSocks = `socks://${url.username}:${url.password}@${url.hostname}:${url.port}`;
+        urlSocks = `${socksProtocol}://${url.username}:${url.password}@${url.hostname}:${url.port}`;
       } else {
-        urlSocks = `socks://${url.hostname}:${url.port}`;
+        urlSocks = `${socksProtocol}://${url.hostname}:${url.port}`;
       }
 
       return new SocksProxyAgent(urlSocks);
@@ -77,6 +83,7 @@ export function makeProxyAgentUndici(proxy: Proxy | string): ProxyAgent {
   }
 
   protocol = protocol.toLowerCase();
+  if (protocol === 'socks') protocol = 'socks5';
 
   const PROXY_HTTP_PROTOCOL = 'http';
   const PROXY_HTTPS_PROTOCOL = 'https';

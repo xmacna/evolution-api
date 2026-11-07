@@ -38,6 +38,7 @@ jobs:
       - run: npm run db:generate
       - run: npm run lint:check
       - run: npm run test:xmacna-compat
+      - run: npm run test:xmacna-proxy
       - run: npm run test:xmacna-inbox
       - name: Prepare isolated PostgreSQL schema
         run: npx prisma db push --schema prisma/postgresql-schema.prisma --skip-generate

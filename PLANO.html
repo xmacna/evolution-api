@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proxy protocol contracts — Nex, rodada 1</title><style>
+:root{color-scheme:dark;--bg:#0c1422;--panel:#132238;--ink:#edf4ff;--muted:#adbed4;--line:#29415d;--accent:#6ce0c3}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,Segoe UI,sans-serif}
+main{max-width:1120px;margin:auto;padding:32px 24px 80px}header{padding:30px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(125deg,#18344c,#19233b)}
+.eyebrow{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:2px}header h1{font-size:clamp(26px,4vw,44px);line-height:1.15;margin:14px 0}header p{color:var(--muted);margin:10px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:24px 0}.card{background:var(--panel);padding:18px;border-radius:15px;border:1px solid var(--line)}.card strong{font-size:25px;display:block}.card small{color:var(--muted)}
+article{background:#101c2d;border:1px solid var(--line);border-radius:18px;padding:26px 30px}article h1{font-size:28px}h2{font-size:23px;margin-top:36px;padding-top:18px;border-top:1px solid var(--line)}h3{font-size:19px}a{color:#80d9ff;overflow-wrap:anywhere}a:hover{color:var(--accent)}
+p,li{overflow-wrap:anywhere}li{margin-bottom:9px}code{font-family:Consolas,monospace;font-size:.88em;background:#1d3048;border-radius:5px;padding:2px 5px}pre{background:#08101d;border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;line-height:1.5}pre code{background:none;padding:0}
+table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;margin:20px 0}th,td{padding:12px 15px;text-align:left;border-bottom:1px solid var(--line)}th{background:#1b3049}tr:nth-child(even){background:#142238}blockquote{border-left:4px solid var(--accent);padding:6px 18px;margin:20px 0;background:var(--panel)}footer{color:var(--muted);font-size:12px;margin-top:22px;overflow-wrap:anywhere}
+@media(max-width:600px){main{padding:16px 12px 40px}article{padding:16px}header{padding:22px}}@media print{body{background:white;color:#17283c}main{max-width:none}header,article,.card{background:white;border-color:#aaa}a{color:#134a80}pre,code,th,tr:nth-child(even){background:#f1f4f7;color:#17283c}}
+</style><main>
+<header><div class="eyebrow">EVOLUTION · NEX · RODADA 1</div><h1>🛠️ Proxy protocol contracts — Nex, rodada 1</h1>
+<p>Evolution · código, prova offline e continuidade</p>
+<a href="PLANO.md">📄 Fonte canônica em Markdown</a></header>
+<div class="cards"><div class="card"><strong>🧪 6 / 6</strong><small>Candidato passa · baseline com 4 falhas</small></div>
+<div class="card"><strong>🔌 HTTPS</strong><small>Agente do socket aceita o proxy TLS</small></div>
+<div class="card"><strong>🧭 SOCKS4</strong><small>Versão do protocolo preservada</small></div>
+<div class="card"><strong>🛡️ Offline</strong><small>Nenhuma conexão de teste aberta</small></div></div>
+<article><h1>Proxy protocol contracts — Nex, rodada 1</h1>
+<p>Fonte canônica; <a href="PLANO.html">HTML</a>. Dono <code>nex-evolution-build-sol</code>; branch <code>xmacna/proxy-agent-protocol-contracts</code>. Origem: <code>FILA-AUTORIZADA.md</code> e lacuna reproduzida no utilitário <code>makeProxyAgent.ts</code>. Item 2 da rodada, independente da PR #10 e da frente interactiveResponseMessage.</p>
+<ul>
+<li>[x] Conferir PRs abertas e <code>task-claims.ndjson</code>; registrar posse própria <code>evolution-proxy-contracts</code> antes de editar.</li>
+<li>[x] Reproduzir quatro falhas: HTTPS, SOCKS4, paridade de objeto e alias SOCKS no Undici.</li>
+<li>[x] Correção mínima e seis testes offline verdes com agentes reais; sem tráfego de rede.</li>
+<li>[x] Acrescentar <code>test:xmacna-proxy</code> ao CI Node 24.</li>
+<li>[ ] Publicar PR, prova, inbox e fila de revisão Nex no SHA atual; conferir build do CI.</li>
+</ul>
+<p>Critério de pronto de código: seis testes e build/CI verdes, revisão solicitada e evidência remota. Relato/limites: <a href="docs/proxy-agent/PROXY-CONTRACTS.md">PROXY-CONTRACTS.md</a> e <a href="docs/proxy-agent/PROXY-CONTRACTS.html">HTML</a>. Sem produção, merge, proxy real ou alteração de serviços.</p></article><footer>Render autocontido, sem fontes ou scripts externos. Se houver divergência, o Markdown prevalece.<br>
+SHA256 da fonte canônica: 430030c2ad6485befe4ad9c39983b83315511d11db128acd5c2e7dbda51d5fd1</footer></main></html>

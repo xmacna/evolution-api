@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proxy agent protocol parity</title><style>
+:root{color-scheme:dark;--bg:#0c1422;--panel:#132238;--ink:#edf4ff;--muted:#adbed4;--line:#29415d;--accent:#6ce0c3}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,Segoe UI,sans-serif}
+main{max-width:1120px;margin:auto;padding:32px 24px 80px}header{padding:30px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(125deg,#18344c,#19233b)}
+.eyebrow{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:2px}header h1{font-size:clamp(26px,4vw,44px);line-height:1.15;margin:14px 0}header p{color:var(--muted);margin:10px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:24px 0}.card{background:var(--panel);padding:18px;border-radius:15px;border:1px solid var(--line)}.card strong{font-size:25px;display:block}.card small{color:var(--muted)}
+article{background:#101c2d;border:1px solid var(--line);border-radius:18px;padding:26px 30px}article h1{font-size:28px}h2{font-size:23px;margin-top:36px;padding-top:18px;border-top:1px solid var(--line)}h3{font-size:19px}a{color:#80d9ff;overflow-wrap:anywhere}a:hover{color:var(--accent)}
+p,li{overflow-wrap:anywhere}li{margin-bottom:9px}code{font-family:Consolas,monospace;font-size:.88em;background:#1d3048;border-radius:5px;padding:2px 5px}pre{background:#08101d;border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;line-height:1.5}pre code{background:none;padding:0}
+table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;margin:20px 0}th,td{padding:12px 15px;text-align:left;border-bottom:1px solid var(--line)}th{background:#1b3049}tr:nth-child(even){background:#142238}blockquote{border-left:4px solid var(--accent);padding:6px 18px;margin:20px 0;background:var(--panel)}footer{color:var(--muted);font-size:12px;margin-top:22px;overflow-wrap:anywhere}
+@media(max-width:600px){main{padding:16px 12px 40px}article{padding:16px}header{padding:22px}}@media print{body{background:white;color:#17283c}main{max-width:none}header,article,.card{background:white;border-color:#aaa}a{color:#134a80}pre,code,th,tr:nth-child(even){background:#f1f4f7;color:#17283c}}
+</style><main>
+<header><div class="eyebrow">EVOLUTION · NEX · RODADA 1</div><h1>🛠️ Proxy agent protocol parity</h1>
+<p>Evolution · código, prova offline e continuidade</p>
+<a href="PROXY-CONTRACTS.md">📄 Fonte canônica em Markdown</a></header>
+<div class="cards"><div class="card"><strong>🧪 6 / 6</strong><small>Candidato passa · baseline com 4 falhas</small></div>
+<div class="card"><strong>🔌 HTTPS</strong><small>Agente do socket aceita o proxy TLS</small></div>
+<div class="card"><strong>🧭 SOCKS4</strong><small>Versão do protocolo preservada</small></div>
+<div class="card"><strong>🛡️ Offline</strong><small>Nenhuma conexão de teste aberta</small></div></div>
+<article><h1>Proxy agent protocol parity</h1>
+<p>Canonical report; <a href="PROXY-CONTRACTS.html">human HTML</a>. Owner: nex-evolution-build-sol. Origin: the authorized Nex queue (<code>FILA-AUTORIZADA.md</code>, 2026-11-07) allows a reproduced test gap after issue #1064. No existing proxy test or active claim covered this utility when selected.</p>
+<h2>Reproduced failure</h2>
+<p><code>makeProxyAgentUndici</code> already supported HTTPS and SOCKS4, but <code>makeProxyAgent</code> rejected those protocols. The Baileys socket setup calls both factories for one proxy configuration, and <code>ProxyController.testProxy</code> uses the latter. Thus a protocol accepted by the fetch side failed locally before either could connect. The string <code>socks://</code> alias was also rejected by Undici although its object form was accepted.</p>
+<p>Six offline tests against baseline <code>6b93af39399f01a17aa421b0a235d82c41c6e4c9</code> produced four failures and two passes. The failures were HTTPS string construction, SOCKS4 string construction, object protocol parity and the Undici string SOCKS alias. The candidate passes all six. These tests call the actual utility and installed proxy libraries; they construct and dispose agents without dispatching requests or opening listeners/sockets.</p>
+<h2>Change</h2>
+<ul>
+<li>Route HTTPS to the existing <code>HttpsProxyAgent</code>, which supports TLS proxy URLs.</li>
+<li>Route SOCKS4 to <code>SocksProxyAgent</code> and preserve version four in the URL passed to it.</li>
+<li>Normalize the Undici string <code>socks</code> alias to the existing SOCKS5 dispatcher branch.</li>
+<li>Preserve the existing HTTP/SOCKS5 behavior, including the socket agent's prior SOCKS5 DNS policy and encoded URL credentials. Unsupported protocols still throw.</li>
+</ul>
+<p>The fix changes no dependency version, schema, credential, endpoint, proxy configuration or service. Tests use only <code>proxy.example.invalid</code> and synthetic credentials. No production proxy was contacted or configured.</p>
+<h2>Verification</h2>
+<pre><code class="language-sh">npm ci
+npm run test:xmacna-proxy
+npm run build
+</code></pre>
+<p>The existing Node 24 quality workflow now runs the focused test command before the inbox checks/build. Local targeted tests ran on Node 22.11.0 with a small isolated harness containing the pinned project proxy libraries and tsx, not a full application install. Baseline: 2 pass / 4 fail; candidate: 6 pass / 0 fail / 0 skip. Formatting checked. Full application build and Node 24 proof are delegated to that CI and must be read in the PR, not assumed in advance.</p>
+<p>To replay the baseline, copy the new test file into a separate checkout at the baseline commit, install the lockfile there, and run <code>npx tsx --test --test-concurrency=1 test/xmacna-proxy-agent.test.ts</code>. Do not replace files in an active owner's checkout.</p>
+<p>The proof establishes agent selection and construction, not external proxy reachability, TLS interoperability, DNS availability or a live WhatsApp connection. Independent Nex review is required; no merge or deployment is authorized by this work.</p></article><footer>Render autocontido, sem fontes ou scripts externos. Se houver divergência, o Markdown prevalece.<br>
+SHA256 da fonte canônica: 805972d72faacf37cf78e3d4dff094bc8d9fa9bb2aca45cd288784cb0abb9df4</footer></main></html>
