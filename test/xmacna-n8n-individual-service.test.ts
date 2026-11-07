@@ -4,6 +4,7 @@ import { build } from 'esbuild';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { captureIndividualChatbotMessage } from '../src/api/integrations/chatbot/n8n/n8nIndividualMessages';
 
@@ -20,7 +21,7 @@ test('actual N8nService posts individual text/audio events, retains live ownerLi
           : 'exports.BaseChatbotService = class { constructor() { this.logger = { error() {}, warn() {} }; } async sendMessageWhatsApp() {} };', loader: 'js' }));
       } }],
     });
-    const { N8nService } = await import(outfile);
+    const { N8nService } = await import(pathToFileURL(outfile).href);
     const requests: any[] = [];
     (globalThis as any).__n8nPost = async (...args: any[]) => { requests.push(args); return { data: { output: 'reply' } }; };
     const service = new N8nService({}, {}, { get: () => ({ URL: 'https://local.invalid' }) },
