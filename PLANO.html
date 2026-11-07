@@ -25,10 +25,11 @@ table{width:100%;border-collapse:collapse;display:block;overflow-x:auto;margin:2
 <li>[x] Integrar patch auditado ao Dockerfile principal e CI, com pins, SHA256, âncoras únicas e recusa de drift.</li>
 <li>[x] Corrigir ID <code>ignored-ok</code>, espera por conclusão da fila e tolerância de webhook explícita/testada.</li>
 <li>[x] Prova offline: baseline 4 falhas; candidato 6/6; guardas 8/8; avaliador 15/15; CLI/sintaxe PASS. Receita e limites: <a href="docs/status-ack/BUILD.md">BUILD.md</a> / <a href="docs/status-ack/BUILD.html">BUILD.html</a>.</li>
-<li>[ ] Publicar PR/prova, solicitar revisão Rafael e Nex no SHA atual, vincular em #1064, registrar inbox.</li>
-<li>[ ] Conferir CI e revisões; tratar apontamentos dentro desta posse; atualizar checkpoint e HANDOFF.md/.html.</li>
+<li>[x] Publicar <a href="https://github.com/xmacna/evolution-api/pull/10">PR #10</a> e <a href="https://github.com/xmacna/evolution-api/pull/10#issuecomment-6712666695">prova</a>, solicitar revisão Rafael e Nex, <a href="https://github.com/xmacna/elysium/issues/1064#issuecomment-6712670146">vincular em #1064</a>, registrar inbox.</li>
+<li>[x] Conferir <a href="https://github.com/xmacna/evolution-api/actions/runs/42411550360">CI Node 24 e build completo</a> e <a href="https://github.com/xmacna/evolution-api/actions/runs/42411550254">segurança</a>: PASS no commit de código <code>d41e4357ab785db42550db11e5dc6c6b09805ec0</code>.</li>
+<li>[ ] Receber revisões Rafael/Nex no SHA atual e tratar apontamentos. Continuidade no checkpoint e HANDOFF.md/.html externos da frente.</li>
 </ul>
-<p>AGUARDA: CI, build completo no ambiente Node 24; testes locais leves executados com Node 22. Docker não está instalado/disponível no PATH; nenhum serviço foi instalado/configurado. Receita reproduzível entregue, sem afirmar build de imagem local.</p>
+<p>CI Node <code>v24.22.2</code> passou, inclusive build completo e testes PostgreSQL isolados. Docker não está instalado/disponível no PATH; nenhum serviço foi instalado/configurado. Receita reproduzível entregue, sem afirmar build de imagem local. O CI do último commit documental deve ser conferido pela retomada se ainda estiver em execução.</p>
 <p>AGUARDA: revisor Nex e <code>raffareis</code>, revisão independente do candidato atual. A aprovação da PR #9 não aprova esta integração.</p>
 <p>AGUARDA: dono/Vesper, digest real de registro, canário ≥4 ciclos/200min, revisão e GO. A issue permanece aberta. Sem publicação de imagem, canário real, deploy, produção, beta2, n8n ou cliente nesta rodada.</p></article><footer>Render autocontido, sem fontes ou scripts externos. Se houver divergência, o Markdown prevalece.<br>
-SHA256 da fonte canônica: 89697c6364cc2e712e1329347ce78dd11ecd00a669de7b4e0898cf615ad987aa</footer></main></html>
+SHA256 da fonte canônica: 582b1fa5b09101a4d2d369820285111dcb71dfa969b48a1d2750aac4c5f44bc3</footer></main></html>

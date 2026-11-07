@@ -79,7 +79,7 @@ The image allowlist remains the historically reviewed PR #9 canary image. A newl
 
 ## Evidence and remaining acceptance criteria
 
-Local first-round proof on Windows/Node `v22.11.0` (Node 24 CI result must be checked separately):
+Local first-round proof on Windows/Node `v22.11.0`, independently reproduced by [Node `v24.22.2` CI](https://github.com/xmacna/evolution-api/actions/runs/42411550360) on code commit `d41e4357ab785db42550db11e5dc6c6b09805ec0`:
 
 | Check | Result |
 | --- | --- |
@@ -92,8 +92,10 @@ Local first-round proof on Windows/Node `v22.11.0` (Node 24 CI result must be ch
 | Source preparer: good archive, bad integrity, overwrite refusal | PASS |
 | Local Docker image build | NOT RUN: Docker executable unavailable |
 | Full local application build | NOT RUN: application dependencies absent; delegated to existing Node 24 CI |
+| Remote Node 24 application build and checks | PASS: patch proof/application, lint, compatibility, inbox tests, isolated PostgreSQL tests and build |
+| Remote security checks | PASS: [CodeQL and dependency review](https://github.com/xmacna/evolution-api/actions/runs/42411550254) |
 | Registry digest / actual canary | PENDING owner/Vesper |
 
-Two new policy tests failed against the previous evaluator before its correction. All tests use synthetic I/O/evidence. The final PR conversation records the tested commit and CI evidence; this document does not assert a CI outcome in advance.
+Two new policy tests failed against the previous evaluator before its correction. All tests use synthetic I/O/evidence. [PR #10](https://github.com/xmacna/evolution-api/pull/10) records the tested commit and CI evidence; later documentation-only commits do not replace this tested code identity. Independent Nex and Rafael review remain pending.
 
 Issue #1064 must remain open until a reviewed image has a real registry digest and the isolated canary satisfies the operational criteria: baseline `ack class=status` failure on the same internal number, followed by at least four contiguous 50-minute cycles / 200 minutes on the candidate with real Status ACKs and continuing inbound/webhook delivery. Rafael's review and Vesper's GO remain required. Registry publication, actual canary, rollout and the 24-hour production watch are outside this code/testing task.
