@@ -30,7 +30,7 @@ import { arrayUnique, isURL } from 'class-validator';
 import EventEmitter2 from 'eventemitter2';
 import FormData from 'form-data';
 import mimeTypes from 'mime-types';
-import { join } from 'path';
+import { posix } from 'path';
 
 export class BusinessStartupService extends ChannelStartupService {
   constructor(
@@ -493,7 +493,7 @@ export class BusinessStartupService extends ChannelStartupService {
 
                 const size = result.headers['content-length'] || buffer.data.byteLength;
 
-                const fullName = join(`${this.instance.id}`, key.remoteJid, mediaType, fileName);
+                const fullName = posix.join(`${this.instance.id}`, key.remoteJid, mediaType, fileName);
 
                 await s3Service.uploadFile(fullName, buffer.data, size, {
                   'Content-Type': mimetype,

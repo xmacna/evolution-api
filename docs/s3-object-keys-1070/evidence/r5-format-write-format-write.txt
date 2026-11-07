@@ -1,0 +1,3 @@
+src/api/integrations/channel/meta/whatsapp.business.service.ts 336ms
+src/api/integrations/channel/evolution/evolution.channel.service.ts 87ms
+src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts 646ms

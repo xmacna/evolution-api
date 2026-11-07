@@ -1,0 +1,138 @@
+TAP version 13
+# {"producer":"meta/whatsapp.business.service.ts","index":0,"platform":"Windows","key":"evolution-api/fixture-instance\\\\fixture-jid\\\\image\\\\fixture.jpg","pathname":"/evolution-api/fixture-instance%5Cfixture-jid%5Cimage%5Cfixture.jpg"}
+# {"producer":"meta/whatsapp.business.service.ts","index":0,"platform":"Linux","key":"evolution-api/fixture-instance/fixture-jid/image/fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/image/fixture.jpg"}
+# {"producer":"evolution/evolution.channel.service.ts","index":0,"platform":"Windows","key":"evolution-api/fixture-instance\\\\fixture-jid\\\\image\\\\fixture.jpg","pathname":"/evolution-api/fixture-instance%5Cfixture-jid%5Cimage%5Cfixture.jpg"}
+# {"producer":"evolution/evolution.channel.service.ts","index":0,"platform":"Linux","key":"evolution-api/fixture-instance/fixture-jid/image/fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/image/fixture.jpg"}
+# {"producer":"whatsapp/whatsapp.baileys.service.ts","index":0,"platform":"Windows","key":"evolution-api/fixture-instance\\\\fixture-jid\\\\image\\\\1700000000000_fixture.jpg","pathname":"/evolution-api/fixture-instance%5Cfixture-jid%5Cimage%5C1700000000000_fixture.jpg"}
+# {"producer":"whatsapp/whatsapp.baileys.service.ts","index":1,"platform":"Windows","key":"evolution-api/fixture-instance\\\\fixture-jid\\\\fixture-message\\\\image\\\\fixture.jpg","pathname":"/evolution-api/fixture-instance%5Cfixture-jid%5Cfixture-message%5Cimage%5Cfixture.jpg"}
+# {"producer":"whatsapp/whatsapp.baileys.service.ts","index":0,"platform":"Linux","key":"evolution-api/fixture-instance/fixture-jid/image/1700000000000_fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/image/1700000000000_fixture.jpg"}
+# {"producer":"whatsapp/whatsapp.baileys.service.ts","index":1,"platform":"Linux","key":"evolution-api/fixture-instance/fixture-jid/fixture-message/image/fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/fixture-message/image/fixture.jpg"}
+# Subtest: producer→S3 meta/whatsapp.business.service.ts \#1 on Windows
+not ok 1 - producer→S3 meta/whatsapp.business.service.ts \#1 on Windows
+  ---
+  duration_ms: 97.261
+  type: 'test'
+  location: 'C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-producers.test.ts:2:3416'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'fixture-instance\\fixture-jid\\image\\fixture.jpg'
+    - 'fixture-instance/fixture-jid/image/fixture.jpg'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'fixture-instance/fixture-jid/image/fixture.jpg'
+  actual: 'fixture-instance\\fixture-jid\\image\\fixture.jpg'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Lucca Galaxy Book\work\nex-night-20261107\evolution-s3-1070-nex\test\xmacna-s3-producers.test.ts:88:18)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: producer→S3 meta/whatsapp.business.service.ts \#1 on Linux
+ok 2 - producer→S3 meta/whatsapp.business.service.ts \#1 on Linux
+  ---
+  duration_ms: 9.5608
+  type: 'test'
+  ...
+# Subtest: producer→S3 evolution/evolution.channel.service.ts \#1 on Windows
+not ok 3 - producer→S3 evolution/evolution.channel.service.ts \#1 on Windows
+  ---
+  duration_ms: 7.7049
+  type: 'test'
+  location: 'C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-producers.test.ts:2:3416'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'fixture-instance\\fixture-jid\\image\\fixture.jpg'
+    - 'fixture-instance/fixture-jid/image/fixture.jpg'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'fixture-instance/fixture-jid/image/fixture.jpg'
+  actual: 'fixture-instance\\fixture-jid\\image\\fixture.jpg'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Lucca Galaxy Book\work\nex-night-20261107\evolution-s3-1070-nex\test\xmacna-s3-producers.test.ts:88:18)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: producer→S3 evolution/evolution.channel.service.ts \#1 on Linux
+ok 4 - producer→S3 evolution/evolution.channel.service.ts \#1 on Linux
+  ---
+  duration_ms: 6.9521
+  type: 'test'
+  ...
+# Subtest: producer→S3 whatsapp/whatsapp.baileys.service.ts \#1 on Windows
+not ok 5 - producer→S3 whatsapp/whatsapp.baileys.service.ts \#1 on Windows
+  ---
+  duration_ms: 7.4943
+  type: 'test'
+  location: 'C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-producers.test.ts:2:3416'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'fixture-instance\\fixture-jid\\image\\1700000000000_fixture.jpg'
+    - 'fixture-instance/fixture-jid/image/1700000000000_fixture.jpg'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'fixture-instance/fixture-jid/image/1700000000000_fixture.jpg'
+  actual: 'fixture-instance\\fixture-jid\\image\\1700000000000_fixture.jpg'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Lucca Galaxy Book\work\nex-night-20261107\evolution-s3-1070-nex\test\xmacna-s3-producers.test.ts:88:18)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: producer→S3 whatsapp/whatsapp.baileys.service.ts \#2 on Windows
+not ok 6 - producer→S3 whatsapp/whatsapp.baileys.service.ts \#2 on Windows
+  ---
+  duration_ms: 7.0238
+  type: 'test'
+  location: 'C:\\Users\\Lucca Galaxy Book\\work\\nex-night-20261107\\evolution-s3-1070-nex\\test\\xmacna-s3-producers.test.ts:2:3416'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'fixture-instance\\fixture-jid\\fixture-message\\image\\fixture.jpg'
+    - 'fixture-instance/fixture-jid/fixture-message/image/fixture.jpg'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'fixture-instance/fixture-jid/fixture-message/image/fixture.jpg'
+  actual: 'fixture-instance\\fixture-jid\\fixture-message\\image\\fixture.jpg'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Lucca Galaxy Book\work\nex-night-20261107\evolution-s3-1070-nex\test\xmacna-s3-producers.test.ts:88:18)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: producer→S3 whatsapp/whatsapp.baileys.service.ts \#1 on Linux
+ok 7 - producer→S3 whatsapp/whatsapp.baileys.service.ts \#1 on Linux
+  ---
+  duration_ms: 7.8602
+  type: 'test'
+  ...
+# Subtest: producer→S3 whatsapp/whatsapp.baileys.service.ts \#2 on Linux
+ok 8 - producer→S3 whatsapp/whatsapp.baileys.service.ts \#2 on Linux
+  ---
+  duration_ms: 7.1999
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 4
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22583.1027

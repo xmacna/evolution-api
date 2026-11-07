@@ -1,0 +1,66 @@
+TAP version 13
+# {"producer":"meta/whatsapp.business.service.ts","index":0,"platform":"Windows","key":"evolution-api/fixture-instance/fixture-jid/image/fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/image/fixture.jpg"}
+# {"producer":"meta/whatsapp.business.service.ts","index":0,"platform":"Linux","key":"evolution-api/fixture-instance/fixture-jid/image/fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/image/fixture.jpg"}
+# {"producer":"evolution/evolution.channel.service.ts","index":0,"platform":"Windows","key":"evolution-api/fixture-instance/fixture-jid/image/fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/image/fixture.jpg"}
+# {"producer":"evolution/evolution.channel.service.ts","index":0,"platform":"Linux","key":"evolution-api/fixture-instance/fixture-jid/image/fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/image/fixture.jpg"}
+# {"producer":"whatsapp/whatsapp.baileys.service.ts","index":0,"platform":"Windows","key":"evolution-api/fixture-instance/fixture-jid/image/1700000000000_fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/image/1700000000000_fixture.jpg"}
+# {"producer":"whatsapp/whatsapp.baileys.service.ts","index":1,"platform":"Windows","key":"evolution-api/fixture-instance/fixture-jid/fixture-message/image/fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/fixture-message/image/fixture.jpg"}
+# {"producer":"whatsapp/whatsapp.baileys.service.ts","index":0,"platform":"Linux","key":"evolution-api/fixture-instance/fixture-jid/image/1700000000000_fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/image/1700000000000_fixture.jpg"}
+# {"producer":"whatsapp/whatsapp.baileys.service.ts","index":1,"platform":"Linux","key":"evolution-api/fixture-instance/fixture-jid/fixture-message/image/fixture.jpg","pathname":"/evolution-api/fixture-instance/fixture-jid/fixture-message/image/fixture.jpg"}
+# Subtest: producer→S3 meta/whatsapp.business.service.ts \#1 on Windows
+ok 1 - producer→S3 meta/whatsapp.business.service.ts \#1 on Windows
+  ---
+  duration_ms: 46.7223
+  type: 'test'
+  ...
+# Subtest: producer→S3 meta/whatsapp.business.service.ts \#1 on Linux
+ok 2 - producer→S3 meta/whatsapp.business.service.ts \#1 on Linux
+  ---
+  duration_ms: 5.2612
+  type: 'test'
+  ...
+# Subtest: producer→S3 evolution/evolution.channel.service.ts \#1 on Windows
+ok 3 - producer→S3 evolution/evolution.channel.service.ts \#1 on Windows
+  ---
+  duration_ms: 4.2649
+  type: 'test'
+  ...
+# Subtest: producer→S3 evolution/evolution.channel.service.ts \#1 on Linux
+ok 4 - producer→S3 evolution/evolution.channel.service.ts \#1 on Linux
+  ---
+  duration_ms: 4.6786
+  type: 'test'
+  ...
+# Subtest: producer→S3 whatsapp/whatsapp.baileys.service.ts \#1 on Windows
+ok 5 - producer→S3 whatsapp/whatsapp.baileys.service.ts \#1 on Windows
+  ---
+  duration_ms: 4.5031
+  type: 'test'
+  ...
+# Subtest: producer→S3 whatsapp/whatsapp.baileys.service.ts \#2 on Windows
+ok 6 - producer→S3 whatsapp/whatsapp.baileys.service.ts \#2 on Windows
+  ---
+  duration_ms: 21.9524
+  type: 'test'
+  ...
+# Subtest: producer→S3 whatsapp/whatsapp.baileys.service.ts \#1 on Linux
+ok 7 - producer→S3 whatsapp/whatsapp.baileys.service.ts \#1 on Linux
+  ---
+  duration_ms: 4.3945
+  type: 'test'
+  ...
+# Subtest: producer→S3 whatsapp/whatsapp.baileys.service.ts \#2 on Linux
+ok 8 - producer→S3 whatsapp/whatsapp.baileys.service.ts \#2 on Linux
+  ---
+  duration_ms: 3.7232
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1672.8021
