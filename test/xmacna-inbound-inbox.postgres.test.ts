@@ -147,29 +147,7 @@ test('840 concurrent deliveries create one receipt and one durable message', { s
 
 test('enforce downgrade serializes against a concurrent ingress claim', { skip: !enabled }, async () => {
   const repository = new PrismaClient();
-  const conflicts: Array<{ code?: string; name?: string; known: boolean }> = [];
-  const transaction = repository.$transaction.bind(repository);
-  const traced = new Proxy(repository, {
-    get(target, key) {
-      if (key === '$transaction') {
-        return async (...args: any[]) => {
-          try {
-            return await (transaction as any)(...args);
-          } catch (error) {
-            conflicts.push({
-              code: (error as any)?.code,
-              name: (error as any)?.constructor?.name,
-              known: error instanceof Prisma.PrismaClientKnownRequestError,
-            });
-            throw error;
-          }
-        };
-      }
-      const value = Reflect.get(target, key);
-      return typeof value === 'function' ? value.bind(target) : value;
-    },
-  });
-  const inbox = new PrismaInboundInbox(traced as any);
+  const inbox = new PrismaInboundInbox(repository as any);
   const suffix = randomUUID();
   const instanceId = `mode-race-${suffix}`;
   const instanceName = `mode-race-${suffix}`;
@@ -208,9 +186,16 @@ test('enforce downgrade serializes against a concurrent ingress claim', { skip: 
       const [claimResult, downgradeResult] = await Promise.allSettled([claim, downgrade]);
 
       if (claimResult.status !== 'fulfilled') {
+        const error = claimResult.reason;
+        const diagnostic = {
+          iteration,
+          code: error?.code,
+          name: error?.constructor?.name,
+          known: error instanceof Prisma.PrismaClientKnownRequestError,
+        };
         assert.fail(
           `claim must never throw on a mode race — that used to drop the batch: ${claimResult.reason}; ` +
-            `conflict diagnostics=${JSON.stringify(conflicts.slice(-16))}`,
+            `conflict diagnostics=${JSON.stringify(diagnostic)}`,
         );
       }
       if (claimResult.value.kind === 'claimed') {
@@ -236,7 +221,6 @@ test('enforce downgrade serializes against a concurrent ingress claim', { skip: 
       await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope, messageId } });
       await transitionInboundMode(repository as any, instanceName, sourceCluster, 'enforce');
     }
-    console.log('MODE_RACE_DIAGNOSTICS ' + JSON.stringify({ iterations: 200, conflicts }));
   } finally {
     await repository.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope } });
     await repository.message.deleteMany({ where: { instanceId } });
