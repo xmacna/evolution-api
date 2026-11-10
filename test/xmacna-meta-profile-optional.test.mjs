@@ -1,6 +1,6 @@
 // Regression: Meta status callbacks whose contacts lack profile/name must not abort messageHandle before statuses.
 // Executes the PRODUCTION BusinessStartupService.messageHandle from the REAL source of this checkout (patched) and,
-// as regression evidence, from the baseline blob 8692b807 (git show, in memory, read-only). Only the import block is
+// as regression evidence, from the baseline blob 5955acd0 = image revision (git show, in memory, read-only). Only the import block is
 // replaced by limited stubs (test/helpers/meta-profile-stubs.mjs); the class body is byte-identical to the source
 // (line endings normalized CRLF->LF only). No network: the axios stub counts calls and every case requires 0.
 //
@@ -8,20 +8,23 @@
 //   node --experimental-transform-types --no-warnings test/xmacna-meta-profile-optional.test.mjs
 // Env: META_PROFILE_OUT=<dir> keeps generated .mts/RESULTS.json there (default: a temp dir, removed at the end);
 //      META_PROFILE_PATCHED_REF=<git ref> loads the "patched" variant from a ref instead of the working tree (self-check).
+// Cleanup: only a temp dir created here (os.tmpdir()/meta-profile-*) is ever removed; a META_PROFILE_OUT dir is never deleted.
 // Exit code 0 ONLY if: patched = 7 PASS / 0 FAIL AND baseline = exactly the expected 3 PASS / 4 FAIL pattern.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process'; import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REL = 'src/api/integrations/channel/meta/whatsapp.business.service.ts';
-const BASELINE_REF = '8692b807d9d383eb206ea0c396f28abcff0e21a8';
+// Baseline = revision labelled on the running primary image (org.opencontainers revision 5955acd0, v2.3.7).
+const BASELINE_REF = '5955acd0eb15d9c25659f6716fe6c40dde07aa2b';
 const STUBS = pathToFileURL(path.join(REPO, 'test', 'helpers', 'meta-profile-stubs.mjs')).href;
 const MARK = 'export class BusinessStartupService';
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const lf = (s) => s.replace(/\r\n/g, '\n');
 const gitShow = (ref) => execFileSync('git', ['show', `${ref}:${REL}`], { cwd: REPO, encoding: 'utf8', maxBuffer: 16 << 20 });
 
-const OUT = process.env.META_PROFILE_OUT ? path.resolve(process.env.META_PROFILE_OUT) : fs.mkdtempSync(path.join(os.tmpdir(), 'meta-profile-'));
+const TMP_ROOT = fs.realpathSync(os.tmpdir());
+const OUT = process.env.META_PROFILE_OUT ? path.resolve(process.env.META_PROFILE_OUT) : fs.mkdtempSync(path.join(TMP_ROOT, 'meta-profile-'));
 const KEEP = !!process.env.META_PROFILE_OUT;
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -82,7 +85,7 @@ async function runVariant(name, text) {
 
 const patchedRef = process.env.META_PROFILE_PATCHED_REF || null;
 const patchedText = patchedRef ? gitShow(patchedRef) : fs.readFileSync(path.join(REPO, REL), 'utf8');
-const baseline = await runVariant('baseline-8692b80', gitShow(BASELINE_REF));
+const baseline = await runVariant('baseline-5955acd', gitShow(BASELINE_REF));
 const patched = await runVariant(patchedRef ? 'patched-ref-' + patchedRef.slice(0, 12) : 'patched-worktree', patchedText);
 const baselinePatternOk = baseline.results.every((r) => r.pass === r.expected_on_baseline)
   && baseline.results.filter((r) => !r.pass).every((r) => /TypeError: Cannot read properties of undefined \(reading '(name|profile)'\)/.test(r.error || ''));
@@ -93,5 +96,10 @@ const summary = { at: new Date().toISOString(), node: process.version, network: 
   variants: [baseline, patched] };
 for (const v of summary.variants) for (const r of v.results) console.log(`${v.variant.padEnd(22)} ${r.pass ? 'PASS' : 'FAIL'}  ${r.case}${r.error ? '  err=' + r.error : ''}`);
 console.log(`baseline ${summary.baseline.pass} PASS / ${summary.baseline.fail} FAIL (expected 3/4, pattern ${baselinePatternOk ? 'OK' : 'CHANGED'}); patched ${summary.patched.pass} PASS / ${summary.patched.fail} FAIL (required 7/0)`);
-if (KEEP) fs.writeFileSync(path.join(OUT, 'RESULTS.json'), JSON.stringify(summary, null, 2) + '\n'); else fs.rmSync(OUT, { recursive: true, force: true });
+function safeCleanup(dir) {
+  const real = fs.realpathSync(dir);
+  if (KEEP || path.dirname(real) !== TMP_ROOT || !/^meta-profile-[A-Za-z0-9]{6}$/.test(path.basename(real))) throw new Error('refusing to remove ' + real);
+  fs.rmSync(real, { recursive: true, force: true });
+}
+if (KEEP) fs.writeFileSync(path.join(OUT, 'RESULTS.json'), JSON.stringify(summary, null, 2) + '\n'); else safeCleanup(OUT);
 process.exitCode = baselinePatternOk && patchedOk && summary.patched.pass === 7 ? 0 : 1;
