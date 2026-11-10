@@ -387,7 +387,8 @@ export class BusinessStartupService extends ChannelStartupService {
       let messageRaw: any;
       let pushName: any;
 
-      if (received.contacts) pushName = received.contacts[0].profile.name;
+      // Meta status callbacks may carry contacts without profile/name: never throw before statuses; never invent a name.
+      pushName = received.contacts?.[0]?.profile?.name;
 
       if (received.messages) {
         const message = received.messages[0]; // Añadir esta línea para definir message

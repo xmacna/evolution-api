@@ -1,0 +1,50 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Meta profile.name opcional</title><meta name="description" content="Correção mínima e regressão do parser Meta"><style>
+:root{--bg:#f7f7fb;--fg:#1b1b29;--mut:#5b5b72;--card:#fff;--line:#dcdce8;--acc:#6d3bd8;--acc2:#0b8fa8;--code:#efeef7}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f0f17;--fg:#e9e9f2;--mut:#a3a3ba;--card:#181824;--line:#2c2c3e;--acc:#a98bff;--acc2:#38d0e8;--code:#232334}}
+:root[data-theme="dark"]{--bg:#0f0f17;--fg:#e9e9f2;--mut:#a3a3ba;--card:#181824;--line:#2c2c3e;--acc:#a98bff;--acc2:#38d0e8;--code:#232334}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:980px;margin:0 auto;padding:28px 16px 60px}
+h1{font-size:1.6rem;line-height:1.25;margin:0 0 14px;padding-bottom:12px;border-bottom:3px solid var(--acc)}
+h2{font-size:1.2rem;margin:30px 0 10px;color:var(--acc)}h3{font-size:1.02rem;margin:20px 0 8px;color:var(--acc2)}
+p,li{overflow-wrap:anywhere}code{background:var(--code);padding:1px 5px;border-radius:4px;font:13px ui-monospace,Consolas,monospace}
+pre{background:var(--code);padding:12px;border-radius:8px;overflow-x:auto;border-left:3px solid var(--acc2)}pre code{padding:0;background:none}
+.tw{overflow-x:auto;margin:10px 0;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:color-mix(in srgb,var(--acc) 12%,var(--card))}tr:last-child td{border-bottom:0}
+strong{color:var(--fg)}footer{margin-top:40px;color:var(--mut);font-size:13px;border-top:1px solid var(--line);padding-top:10px}
+</style></head><body><main><h1>Meta Cloud: <code>contacts[0].profile.name</code> opcional no <code>messageHandle</code></h1>
+<p><strong>Branch:</strong> <code>xmacna/hermes-meta-profile-optional-20261110</code>, criado a partir de <code>8692b807d9d383eb206ea0c396f28abcff0e21a8</code>. <strong>Estado:</strong> correção mínima com regressão local. <strong>Ainda sem build, imagem, canário, deploy ou E2E</strong>, e <strong>sem prova de que os recibos foram resolvidos</strong>.</p>
+<h2>◆ Defeito</h2>
+<p><code>BusinessStartupService.messageHandle</code> lia <code>received.contacts[0].profile.name</code> sem guarda, <strong>antes</strong> dos ramos <code>messages</code>/<code>statuses</code>. Um callback de status com <code>contacts</code> sem <code>profile</code>/<code>name</code> (ou com <code>contacts: []</code>) lançava <code>TypeError: Cannot read properties of undefined (reading 'name'|'profile')</code>, e o <code>catch</code> do método engolia o erro. O laço <code>statuses</code> nunca rodava, então nenhum <code>MessageUpdate</code> era gravado.</p>
+<p><strong>Evidência de runtime (só leitura, coletada pelo gerente):</strong></p>
+<ul>
+<li><code>/evolution/dist/main.js:285:774</code> (<code>messageHandle</code>) ← <code>:285:9979</code> (<code>eventHandler</code>), com 4× às 09:02:22 e 4× às 09:08:14 em 2026-11-10.</li>
+<li>Recorte estático: <code>if(e.contacts&amp;&amp;(i=e.contacts[0].profile.name),e.messages){…</code>. O <code>main.js</code> executado tem SHA <code>cfc2250474e69989bf406787c8de81220bfa2d11eeb1f610891c669db4c72422</code>, <strong>diferente</strong> do módulo separado <code>whatsapp.business.service.js</code> lido antes.</li>
+</ul>
+<p><strong>Limites:</strong></p>
+<ul>
+<li>A equivalência com este fonte foi demonstrada <strong>só para este trecho</strong>. A equivalência da imagem/<code>main.js</code> inteira com este commit <strong>não está comprovada</strong>.</li>
+<li>A ligação com o callback de um wamid específico <strong>não está provada</strong>.</li>
+</ul>
+<h2>◆ Correção (1 linha)</h2>
+<p><code>pushName = received.contacts?.[0]?.profile?.name;</code></p>
+<ul>
+<li>Sem <code>contacts</code>/<code>profile</code>/<code>name</code>, o resultado é <code>undefined</code>, como antes. Nenhum nome é inventado; um nome válido é preservado.</li>
+<li>Não mudam: guardas de instância/ID, <code>findFirst</code>, enum de status, os demais ramos e a lógica de persistência. Nada é fabricado: delivered/read só vêm do <code>status</code> real.</li>
+</ul>
+<h2>◆ Regressão</h2>
+<pre><code>node --experimental-transform-types --no-warnings test/xmacna-meta-profile-optional.test.mjs</code></pre>
+<ul>
+<li>Requer Node ≥ 22.7, sem <code>node_modules</code>.</li>
+<li>Executa o <code>messageHandle</code> <strong>de produção</strong>: o fonte desta checkout e o baseline <code>8692b80</code> via <code>git show</code> em memória. Só o bloco de imports vira stub (<code>test/helpers/meta-profile-stubs.mjs</code>); o corpo da classe é idêntico ao fonte, com CRLF normalizado para LF.</li>
+<li><strong>Exit 0 só se</strong> o patched der 7 PASS / 0 FAIL <strong>e</strong> o baseline der exatamente 3 PASS / 4 FAIL, com os erros literais <code>reading 'name'</code>/<code>'profile'</code>.</li>
+<li><code>META_PROFILE_PATCHED_REF=8692b807…</code> serve de autoteste: sem a correção, o exit é 1.</li>
+</ul>
+<div class="tw"><table><thead><tr><th>Caso</th><th>Baseline 8692b80</th><th>Com correção</th></tr></thead><tbody><tr><td>delivered, <code>contacts:[{wa_id}]</code> sem profile</td><td>FAIL <code>reading 'name'</code></td><td>PASS (MessageUpdate DELIVERED)</td></tr><tr><td>read, <code>contacts:[{wa_id}]</code> sem profile</td><td>FAIL <code>reading 'name'</code></td><td>PASS (READ)</td></tr><tr><td>delivered, sem contacts</td><td>PASS</td><td>PASS</td></tr><tr><td>read, <code>contacts: []</code></td><td>FAIL <code>reading 'profile'</code></td><td>PASS (READ)</td></tr><tr><td>delivered, profile sem name</td><td>PASS</td><td>PASS</td></tr><tr><td>status de id desconhecido</td><td>FAIL <code>reading 'name'</code></td><td>PASS (nenhum update)</td></tr><tr><td>entrada com <code>profile.name</code> válido</td><td>PASS (nome preservado)</td><td>PASS (nome preservado)</td></tr></tbody></table></div>
+<p>Nenhuma chamada de rede (stub do axios = 0). A evidência vem de stubs e payloads sintéticos, não de PostgreSQL, do runtime ou de recibo real.</p>
+<h2>◆ Pendente (fora deste commit)</h2>
+<ul>
+<li>Build da imagem a partir de fonte com procedência comprovada.</li>
+<li>Canário, revisão operacional, deploy com snapshot/rollback e E2E real.</li>
+<li>Observação sem correção: <code>received.contacts[0].profile.phone</code> no ramo <code>messages</code> também não tem guarda; não há causa demonstrada.</li>
+</ul><footer>Renderização HTML do arquivo canônico README.md. Se divergir, vale o .md.</footer></main></body></html>
