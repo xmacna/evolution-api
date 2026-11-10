@@ -121,7 +121,7 @@ test('security overrides resolve to the audited runtime versions', () => {
   const baileysLinkPreviewPackage = require.resolve('link-preview-js/package.json', { paths: [baileysRoot] });
   assert.equal(require(baileysLinkPreviewPackage).version, '5.0.0');
 
-  assert.equal(installedPackage('multer').version, '2.4.0');
+  assert.equal(installedPackage('multer').version, '2.5.0');
   assert.equal(installedPackage('sharp').version, '0.35.5');
   assert.equal(installedPackage('compression').version, '1.8.2');
   const baileysRuntime = installedPackage('baileys');
@@ -129,9 +129,15 @@ test('security overrides resolve to the audited runtime versions', () => {
 
   const express = installedPackage('express');
   const bodyParser = installedPackage('body-parser', express.dir);
+  assert.equal(bodyParser.version, '1.20.9');
+  assert.equal(installedPackage('ip-address').version, '10.7.4');
+  assert.equal(installedPackage('undici').version, '7.30.1');
+  assert.equal(installedPackage('undici', installedPackage('link-preview-js').dir).version, '8.12.2');
+  assert.throws(() => installedPackage('jimp'), /not installed/);
+  assert.throws(() => installedPackage('zod'), /not installed/);
   assert.equal(installedPackage('proxy-addr', express.dir).version, '2.0.8');
-  assert.equal(installedPackage('qs', express.dir).version, '6.16.0');
-  assert.equal(installedPackage('qs', bodyParser.dir).version, '6.16.0');
+  assert.equal(installedPackage('qs', express.dir).version, '6.16.1');
+  assert.equal(installedPackage('qs', bodyParser.dir).version, '6.16.1');
 
   // xmacna/elysium#518 (2026-09-14): minio (and its unpatchable stream-json) is gone; the S3
   // wrapper speaks @aws-sdk/client-s3. Pin the swap so a merge never brings minio back.
