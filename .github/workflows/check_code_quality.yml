@@ -35,6 +35,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run test:status-ack
+      - run: npm run patch:status-ack
       - run: npm run db:generate
       - run: npm run lint:check
       - run: npm run test:xmacna-compat
