@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 import {
   InboundModeTransitionBlockedError,
@@ -158,7 +158,7 @@ test('enforce downgrade serializes against a concurrent ingress claim', { skip: 
     await repository.$connect();
     await repository.instance.create({ data: { id: instanceId, name: instanceName, inboundInboxMode: 'enforce' } });
 
-    for (let iteration = 0; iteration < 30; iteration += 1) {
+    for (let iteration = 0; iteration < 200; iteration += 1) {
       const messageId = `mode-race-${iteration}-${suffix}`;
       const claim = inbox.claim(
         {
@@ -186,7 +186,17 @@ test('enforce downgrade serializes against a concurrent ingress claim', { skip: 
       const [claimResult, downgradeResult] = await Promise.allSettled([claim, downgrade]);
 
       if (claimResult.status !== 'fulfilled') {
-        assert.fail(`claim must never throw on a mode race — that used to drop the batch: ${claimResult.reason}`);
+        const error = claimResult.reason;
+        const diagnostic = {
+          iteration,
+          code: error?.code,
+          name: error?.constructor?.name,
+          known: error instanceof Prisma.PrismaClientKnownRequestError,
+        };
+        assert.fail(
+          `claim must never throw on a mode race — that used to drop the batch: ${claimResult.reason}; ` +
+            `conflict diagnostics=${JSON.stringify(diagnostic)}`,
+        );
       }
       if (claimResult.value.kind === 'claimed') {
         // Claim won the serialization: an in-flight enforce receipt must block
