@@ -132,6 +132,10 @@ export abstract class BaseChatbotService<BotType = any, SettingsType = any> {
     msg?: any,
   ): Promise<void> {
     try {
+      // Empty/malformed inbound content is not a chatbot turn. Keep this boundary
+      // defensive for integrations invoked outside BaseChatbotController too.
+      if (typeof content !== 'string' || content.trim().length === 0) return;
+
       // For new sessions or sessions awaiting initialization
       if (!session) {
         await this.initNewSession(instance, remoteJid, bot, settings, session, content, pushName, msg);
