@@ -1,6 +1,10 @@
 import { configService, S3 } from '@config/env.config';
 
+import { getInteractiveResponseContent } from './galaxyMessageContent';
+
 const getTypeMessage = (msg: any) => {
+  const isGalaxyMessage =
+    msg?.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.name === 'galaxy_message';
   let mediaId: string;
 
   if (
@@ -25,6 +29,7 @@ const getTypeMessage = (msg: any) => {
     responseRowId: msg?.message?.listResponseMessage?.singleSelectReply?.selectedRowId,
     templateButtonReplyMessage:
       msg?.message?.templateButtonReplyMessage?.selectedId || msg?.message?.buttonsResponseMessage?.selectedButtonId,
+    interactiveResponseMessage: getInteractiveResponseContent(msg?.message?.interactiveResponseMessage),
     // Medias
     audioMessage: msg?.message?.speechToText
       ? msg?.message?.speechToText
@@ -49,9 +54,10 @@ const getTypeMessage = (msg: any) => {
             : ''
         }`
       : undefined,
-    externalAdReplyBody: msg?.contextInfo?.externalAdReply?.body
-      ? `externalAdReplyBody|${msg.contextInfo.externalAdReply.body}`
-      : undefined,
+    externalAdReplyBody:
+      !isGalaxyMessage && msg?.contextInfo?.externalAdReply?.body
+        ? `externalAdReplyBody|${msg.contextInfo.externalAdReply.body}`
+        : undefined,
   };
 
   const messageType = Object.keys(types).find((key) => types[key] !== undefined) || 'unknown';
