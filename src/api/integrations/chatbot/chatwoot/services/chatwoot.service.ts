@@ -2002,7 +2002,15 @@ export class ChatwootService {
       if (!mirrored?.id) throw new Error('Business app echo Portal acknowledgment empty');
       const inboxId = mirrored.inbox_id || (await this.getInbox(instance))?.id;
       if (!inboxId) throw new Error('Business app echo Portal inbox acknowledgment empty');
-      return { ...mirrored, inbox_id: inboxId, conversation_id: mirrored.conversation_id || conversationId };
+      const ids = {
+        id: Number(mirrored.id),
+        inbox_id: Number(inboxId),
+        conversation_id: Number(mirrored.conversation_id || conversationId),
+      };
+      if (Object.values(ids).some((id) => !Number.isSafeInteger(id) || id < 1 || id > 2147483647)) {
+        throw new Error('Business app echo Portal acknowledgment ID invalid');
+      }
+      return { ...mirrored, ...ids };
     };
     const existing = await reconcile();
     if (existing) return acknowledge(existing);
