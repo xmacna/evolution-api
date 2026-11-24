@@ -101,6 +101,7 @@ test('unknown LID reaches the bot with its original JID in off and shadow', asyn
       unresolved = error;
     }
     await dispatchInboundChatbot({
+      messageKey: { remoteJid: lid },
       unresolvedLid: unresolved,
       receiptMode,
       attempt: async (operation) => { await operation(); return true; },
@@ -111,7 +112,7 @@ test('unknown LID reaches the bot with its original JID in off and shadow', asyn
   }
 });
 
-test('enforce receipt retains unknown LID and retries after alias confirmation', async () => {
+test('enforce delivers unknown LID and resolves future messages after alias confirmation', async () => {
   const aliases = new MemoryAliases();
   const calls: string[] = [];
   let unresolved: UnresolvedInboundLidError | undefined;
@@ -123,6 +124,7 @@ test('enforce receipt retains unknown LID and retries after alias confirmation',
   }
   let failed = false;
   await dispatchInboundChatbot({
+    messageKey: { remoteJid: lid },
     unresolvedLid: unresolved,
     receiptMode: 'enforce',
     attempt: async (operation) => {
@@ -132,12 +134,14 @@ test('enforce receipt retains unknown LID and retries after alias confirmation',
     durable: async () => { calls.push('n8n'); },
     bestEffort: async () => { calls.push('best-effort'); },
   });
-  assert.equal(failed, true);
-  assert.deepEqual(calls, []);
+  assert.equal(failed, false);
+  assert.deepEqual(calls, ['n8n', 'best-effort']);
+  calls.length = 0;
 
   await resolveInboundAddress('Taubaté', { remoteJid: lid, remoteJidAlt: phone }, aliases);
   const retry = await resolveInboundAddress('Taubaté', { remoteJid: lid }, aliases, async () => null);
   await dispatchInboundChatbot({
+    messageKey: { remoteJid: lid },
     receiptMode: 'enforce',
     attempt: async (operation) => { await operation(); return true; },
     durable: async () => { calls.push(`n8n:${retry.remoteJid}`); },

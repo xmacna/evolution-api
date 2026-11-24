@@ -30,18 +30,30 @@ export async function attemptDurableInboundSink(options: {
   return undefined;
 }
 
-/** Keep legacy LID delivery in off/shadow; only an enforce receipt can retry it. */
+/** Deliver unresolved LIDs with their own identity, without deriving a phone number. */
 export async function dispatchInboundChatbot(options: {
   unresolvedLid?: Error;
+  messageKey: { remoteJid?: string | null; remoteJidAlt?: string | null; senderLid?: string | null };
+  onUnresolvedLidDelivered?: () => void;
   receiptMode?: 'off' | 'shadow' | 'enforce';
   attempt: (operation: () => Promise<'sent'>) => Promise<boolean>;
   durable: () => Promise<void>;
   bestEffort: () => Promise<void>;
 }): Promise<void> {
   const delivered = await options.attempt(async () => {
-    if (options.unresolvedLid && options.receiptMode === 'enforce') throw options.unresolvedLid;
+    if (options.unresolvedLid && options.receiptMode === 'enforce') {
+      const lid = options.messageKey.remoteJid?.endsWith('@lid')
+        ? options.messageKey.remoteJid
+        : options.messageKey.remoteJidAlt;
+      if (!lid?.endsWith('@lid')) throw options.unresolvedLid;
+      options.messageKey.remoteJid = lid;
+      options.messageKey.senderLid = lid;
+    }
     await options.durable();
     return 'sent';
   });
-  if (delivered) await options.bestEffort();
+  if (delivered) {
+    if (options.unresolvedLid && options.receiptMode === 'enforce') options.onUnresolvedLidDelivered?.();
+    await options.bestEffort();
+  }
 }
