@@ -2057,7 +2057,7 @@ export class ChatwootService {
       }
       if (['conversation', 'locationMessage', 'reactionMessage'].includes(body.messageType)) {
         mirrored = await client.messages.create({
-          accountId: provider.accountId,
+          accountId: Number(provider.accountId),
           conversationId,
           data: {
             content,
