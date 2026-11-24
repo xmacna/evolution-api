@@ -419,7 +419,8 @@ export class BusinessAppSync {
       try {
         if (current.blocked !== null && !Array.isArray(current.blocked))
           throw new Error('Historical quarantine state invalid');
-        for (const item of current.blocked || []) {
+        const entries = Array.isArray(current.blocked) ? current.blocked : [];
+        for (const item of entries) {
           if (
             !item ||
             typeof item !== 'object' ||
