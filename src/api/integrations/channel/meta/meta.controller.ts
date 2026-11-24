@@ -15,58 +15,32 @@ export class MetaController extends ChannelController implements ChannelControll
   integrationEnabled: boolean;
 
   public async receiveWebhook(data: any) {
-    if (data.object === 'whatsapp_business_account') {
-      if (data.entry[0]?.changes[0]?.field === 'message_template_status_update') {
-        const template = await this.prismaRepository.template.findFirst({
-          where: { templateId: `${data.entry[0].changes[0].value.message_template_id}` },
-        });
-
-        if (!template) {
-          console.log('template not found');
-          return;
+    if (data?.object !== 'whatsapp_business_account') return { status: 'success' };
+    for (const entry of data.entry || []) {
+      for (const change of entry.changes || []) {
+        if (change?.field === 'message_template_status_update') {
+          const template = await this.prismaRepository.template.findFirst({
+            where: { templateId: `${change.value.message_template_id}` },
+          });
+          if (template) await axios.post(template.webhookUrl, change.value, {
+            headers: { 'Content-Type': 'application/json' },
+          });
+          continue;
         }
-
-        const { webhookUrl } = template;
-
-        await axios.post(webhookUrl, data.entry[0].changes[0].value, {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        return;
-      }
-
-      data.entry?.forEach(async (entry: any) => {
-        const numberId = entry.changes[0].value.metadata.phone_number_id;
-
+        const numberId = change?.value?.metadata?.phone_number_id;
         if (!numberId) {
-          this.logger.error('WebhookService -> receiveWebhookMeta -> numberId not found');
-          return {
-            status: 'success',
-          };
+          if (change?.field === 'smb_message_echoes' && change.value?.message_echoes?.length) {
+            throw new Error('Business app echo phone binding missing');
+          }
+          continue;
         }
-
-        const instance = await this.prismaRepository.instance.findFirst({
-          where: { number: numberId },
-        });
-
-        if (!instance) {
-          this.logger.error('WebhookService -> receiveWebhookMeta -> instance not found');
-          return {
-            status: 'success',
-          };
-        }
-
-        await this.waMonitor.waInstances[instance.name].connectToWhatsapp(data);
-
-        return {
-          status: 'success',
-        };
-      });
+        const instance = await this.prismaRepository.instance.findFirst({ where: { number: numberId } });
+        const client = instance && this.waMonitor.waInstances[instance.name];
+        if (!client) throw new Error('Meta webhook bound instance unavailable');
+        // Do not pass another tenant's entries/changes to this instance.
+        await client.connectToWhatsapp({ ...data, entry: [{ ...entry, changes: [change] }] });
+      }
     }
-
-    return {
-      status: 'success',
-    };
+    return { status: 'success' };
   }
 }

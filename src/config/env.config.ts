@@ -196,6 +196,10 @@ export type Websocket = {
 };
 
 export type WaBusiness = {
+  APP_SECRET?: string;
+  ALLOW_UNSIGNED_LEGACY?: boolean;
+  COEXISTENCE_PAUSE_URL?: string;
+  COEXISTENCE_PAUSE_TOKEN?: string;
   TOKEN_WEBHOOK: string;
   URL: string;
   VERSION: string;
@@ -742,6 +746,10 @@ export class ConfigService {
         },
       },
       WA_BUSINESS: {
+        APP_SECRET: process.env.WA_BUSINESS_APP_SECRET || '',
+        ALLOW_UNSIGNED_LEGACY: process.env.WA_BUSINESS_ALLOW_UNSIGNED_LEGACY !== 'false',
+        COEXISTENCE_PAUSE_URL: process.env.WA_BUSINESS_COEXISTENCE_PAUSE_URL || '',
+        COEXISTENCE_PAUSE_TOKEN: process.env.WA_BUSINESS_COEXISTENCE_PAUSE_TOKEN || '',
         TOKEN_WEBHOOK: process.env.WA_BUSINESS_TOKEN_WEBHOOK || 'evolution',
         URL: process.env.WA_BUSINESS_URL || 'https://graph.facebook.com',
         VERSION: process.env.WA_BUSINESS_VERSION || 'v18.0',

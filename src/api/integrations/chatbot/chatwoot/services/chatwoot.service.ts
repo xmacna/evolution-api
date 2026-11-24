@@ -1080,6 +1080,7 @@ export class ChatwootService {
     messageBody?: any,
     sourceId?: string,
     quotedMsg?: MessageModel,
+    strictBusinessAppEcho = false,
   ) {
     if (sourceId && this.isImportHistoryAvailable()) {
       const messageAlreadySaved = await chatwootImport.getExistingSourceIds([sourceId], conversationId);
@@ -1137,6 +1138,7 @@ export class ChatwootService {
 
       return data;
     } catch (error) {
+      if (strictBusinessAppEcho) throw error;
       this.logger.error(error);
       if (this.shouldSurfaceInboundFailure(instance)) throw error;
       return null;
@@ -1971,6 +1973,65 @@ export class ChatwootService {
     const messageContent = this.getMessageContent(types);
 
     return messageContent;
+  }
+
+  /** Resolve the Portal thread before the pause service validates account/inbox/contact binding. */
+  public async prepareBusinessAppEcho(instance: InstanceDto, body: any): Promise<number> {
+    if (body?.key?.fromMe !== true || !body.key.id) throw new Error('Invalid Business app echo');
+    if (!this.isImportHistoryAvailable()) throw new Error('Business app echo dedup reconciliation unavailable');
+    const client = await this.clientCw(instance);
+    if (!client) throw new Error('Business app echo Portal client unavailable');
+    const conversationId = await this.createConversation(instance, body);
+    if (!conversationId) throw new Error('Business app echo Portal conversation unavailable');
+    return conversationId;
+  }
+
+  /**
+   * Strict app-echo mirror. Keep the WAID source guard used by the Chatwoot
+   * webhook to prevent retransmission, but never run the inbound/bot emitter.
+   * Reconcile after ambiguous POST failures before allowing Meta to retry.
+   */
+  public async mirrorBusinessAppEcho(instance: InstanceDto, body: any, preparedConversationId?: number) {
+    if (body?.key?.fromMe !== true || !body.key.id) throw new Error('Invalid Business app echo');
+    const conversationId = preparedConversationId || await this.prepareBusinessAppEcho(instance, body);
+    const client = await this.clientCw(instance);
+    if (!client) throw new Error('Business app echo Portal client unavailable');
+    const sourceId = `WAID:${body.key.id}`;
+    const reconcile = () => chatwootImport.getExistingMessageBySourceId(sourceId, conversationId);
+    const acknowledge = async (mirrored: any) => {
+      if (!mirrored?.id) throw new Error('Business app echo Portal acknowledgment empty');
+      const inboxId = mirrored.inbox_id || (await this.getInbox(instance))?.id;
+      if (!inboxId) throw new Error('Business app echo Portal inbox acknowledgment empty');
+      return { ...mirrored, inbox_id: inboxId, conversation_id: mirrored.conversation_id || conversationId };
+    };
+    const existing = await reconcile();
+    if (existing) return acknowledge(existing);
+    try {
+      let mirrored: any;
+      const content = body.message?.conversation;
+      if (body.messageType === 'conversation') {
+        mirrored = await client.messages.create({
+          accountId: this.provider.accountId,
+          conversationId,
+          data: { content, message_type: 'outgoing', private: false, source_id: sourceId },
+        });
+      } else {
+        const waInstance = this.waMonitor.waInstances[instance.instanceName];
+        const media = await waInstance.getBase64FromMediaMessage({ message: body });
+        if (!media?.base64 || !media?.mimetype) throw new Error('Business app echo media unavailable');
+        const stream = Readable.from(Buffer.from(media.base64, 'base64'));
+        const filename = media.fileName || `${body.key.id}.${mimeTypes.extension(media.mimetype) || 'bin'}`;
+        mirrored = await this.sendData(
+          conversationId, stream, filename, 'outgoing', media.caption, instance, body, sourceId, undefined, true,
+        );
+      }
+      if (!mirrored?.id) mirrored = await reconcile();
+      return await acknowledge(mirrored);
+    } catch (error) {
+      const accepted = await reconcile();
+      if (accepted) return acknowledge(accepted);
+      throw error;
+    }
   }
 
   public async eventWhatsapp(event: string, instance: InstanceDto, body: any) {
