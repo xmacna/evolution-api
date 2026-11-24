@@ -1993,7 +1993,7 @@ export class ChatwootService {
    */
   public async mirrorBusinessAppEcho(instance: InstanceDto, body: any, preparedConversationId?: number) {
     if (body?.key?.fromMe !== true || !body.key.id) throw new Error('Invalid Business app echo');
-    const conversationId = preparedConversationId || await this.prepareBusinessAppEcho(instance, body);
+    const conversationId = preparedConversationId || (await this.prepareBusinessAppEcho(instance, body));
     const client = await this.clientCw(instance);
     if (!client) throw new Error('Business app echo Portal client unavailable');
     const sourceId = `WAID:${body.key.id}`;
@@ -2022,7 +2022,16 @@ export class ChatwootService {
         const stream = Readable.from(Buffer.from(media.base64, 'base64'));
         const filename = media.fileName || `${body.key.id}.${mimeTypes.extension(media.mimetype) || 'bin'}`;
         mirrored = await this.sendData(
-          conversationId, stream, filename, 'outgoing', media.caption, instance, body, sourceId, undefined, true,
+          conversationId,
+          stream,
+          filename,
+          'outgoing',
+          media.caption,
+          instance,
+          body,
+          sourceId,
+          undefined,
+          true,
         );
       }
       if (!mirrored?.id) mirrored = await reconcile();

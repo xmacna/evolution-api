@@ -22,9 +22,11 @@ export class MetaController extends ChannelController implements ChannelControll
           const template = await this.prismaRepository.template.findFirst({
             where: { templateId: `${change.value.message_template_id}` },
           });
-          if (template) await axios.post(template.webhookUrl, change.value, {
-            headers: { 'Content-Type': 'application/json' },
-          });
+          if (template) {
+            await axios.post(template.webhookUrl, change.value, {
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
           continue;
         }
         const numberId = change?.value?.metadata?.phone_number_id;

@@ -224,7 +224,9 @@ export class BusinessStartupService extends ChannelStartupService {
     raw.contextInfo = JSON.parse(JSON.stringify(raw.contextInfo));
     if (!stored) {
       try {
-        stored = await this.prismaRepository.message.create({ data: { id, ...raw, status: 'COEXISTENCE_ECHO_PENDING' } });
+        stored = await this.prismaRepository.message.create({
+          data: { id, ...raw, status: 'COEXISTENCE_ECHO_PENDING' },
+        });
       } catch (error) {
         if (error?.code !== 'P2002') throw error;
         stored = await this.prismaRepository.message.findUnique({ where: { id } });
@@ -257,7 +259,8 @@ export class BusinessStartupService extends ChannelStartupService {
       stored.chatwootMessageId &&
       stored.chatwootConversationId &&
       stored.chatwootInboxId
-    ) return;
+    )
+      return;
     const config = this.configService.get<WaBusiness>('WA_BUSINESS');
     if (!config.COEXISTENCE_PAUSE_URL || !config.COEXISTENCE_PAUSE_TOKEN) {
       throw new Error('Business app echo verified pause endpoint is not configured');
@@ -280,7 +283,8 @@ export class BusinessStartupService extends ChannelStartupService {
       { headers: { 'x-partenon-secret': config.COEXISTENCE_PAUSE_TOKEN }, timeout: 15000 },
     );
     const result = pause.data;
-    const superseded = result?.paused === false && result?.ignored === true && result?.reason === 'superseded_by_resume';
+    const superseded =
+      result?.paused === false && result?.ignored === true && result?.reason === 'superseded_by_resume';
     if (result?.ok !== true || result?.verified !== true || (result.paused !== true && !superseded)) {
       throw new Error('Business app echo pause was not verified');
     }
@@ -551,9 +555,7 @@ export class BusinessStartupService extends ChannelStartupService {
   protected async messageHandle(received: any, database: Database, settings: any) {
     try {
       let messageRaw: any;
-      let pushName: any;
-
-      pushName = received.contacts?.[0]?.profile?.name;
+      const pushName = received.contacts?.[0]?.profile?.name;
 
       if (received.messages) {
         const message = received.messages[0]; // Añadir esta línea para definir message
@@ -1066,8 +1068,17 @@ export class BusinessStartupService extends ChannelStartupService {
       if (!message?.from && message?.from_user_id) throw new Error('BSUID-only inbound identity unsupported');
       if (!message?.from) throw new Error('Meta inbound phone identity missing');
       const supported = [
-        'text', 'image', 'video', 'audio', 'document', 'sticker', 'location', 'contacts',
-        'interactive', 'button', 'reaction',
+        'text',
+        'image',
+        'video',
+        'audio',
+        'document',
+        'sticker',
+        'location',
+        'contacts',
+        'interactive',
+        'button',
+        'reaction',
       ];
       if (supported.includes(message.type)) {
         const contact = content.contacts?.find(

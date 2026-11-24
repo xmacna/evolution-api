@@ -20,7 +20,9 @@ export function hasCoexistenceChanges(body: any): boolean {
     body.entry.some(
       (entry: any) =>
         Array.isArray(entry?.changes) &&
-        entry.changes.some((change: any) => fields.includes(change?.field) || change?.value?.message_echoes !== undefined),
+        entry.changes.some(
+          (change: any) => fields.includes(change?.field) || change?.value?.message_echoes !== undefined,
+        ),
     )
   );
 }
