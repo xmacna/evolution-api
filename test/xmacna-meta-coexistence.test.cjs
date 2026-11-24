@@ -52,7 +52,7 @@ function harness(options = {}) {
     return { data: options.pauseResponse || { ok: true, verified: true, paused: true } };
   } };
   const { BusinessStartupService } = load('src/api/integrations/channel/meta/whatsapp.business.service.ts', {
-    axios: http, '@api/server.module': { chatbotController: { emit: async data => calls.bots.push(data) } },
+    axios: http, '@api/server.module': { chatbotController: { emit: async data => { calls.bots.push(data); if (options.botPromise) await options.botPromise; if (options.botError) throw new Error('synthetic bot error'); } } },
   });
   const service = Object.create(BusinessStartupService.prototype);
   service.instance = { id: options.id || 'instance-local-a', name: options.name || 'local-a' };
@@ -187,6 +187,7 @@ test('unknown status message does not swallow subsequent delivered status', asyn
   const h = harness(); h.records.set('sent', { id: 'sent', instanceId: 'instance-local-a', key: { id: 'wamid.LOCAL.sent.1', remoteJid: '15550000002@s.whatsapp.net', fromMe: true } });
   const p = fixture('status-delivered'); value(p).statuses.unshift({ ...copy(value(p).statuses[0]), id: 'unknown' });
   await h.service.connectToWhatsapp(p);
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.calls.updates.length, 1); assert.equal(h.calls.updates[0].data.status, 'DELIVERED');
   assert.equal(h.calls.updates[0].data.fromMe, true);
 });
@@ -201,7 +202,7 @@ function portalHarness(options = {}) {
   const { ChatwootService } = load('src/api/integrations/chatbot/chatwoot/services/chatwoot.service.ts', {
     '@api/integrations/chatbot/chatwoot/libs/postgres.client': { postgresClient: { getChatwootConnection: () => null } },
     '@api/integrations/chatbot/chatwoot/utils/chatwoot-import-helper': { chatwootImport: {
-      getExistingMessageBySourceId: async (...args) => { calls.reads.push(args); return existing && options.sqlIds ? Object.fromEntries(Object.entries(existing).map(([k,v]) => [k,String(v)])) : existing && options.partialAck ? { id: existing.id } : existing; },
+      getExistingMessageBySourceId: async (...args) => { calls.reads.push(args); return existing && options.sqlIds ? Object.fromEntries(Object.entries(existing).map(([k,v]) => [k,String(v)])) : existing; },
       getExistingSourceIds: async () => new Set(existing ? ['WAID:wamid.LOCAL.echo.1'] : []),
     } },
     '@utils/i18n': { t: key => key }, 'dayjs': {}, 'long': {}, 'mime-types': { extension: () => 'jpg' }, 'baileys': {},
@@ -210,6 +211,7 @@ function portalHarness(options = {}) {
   });
   const portal = Object.create(ChatwootService.prototype);
   portal.provider = { accountId: 12, token: 'synthetic', url: 'https://portal.local.invalid' };
+  portal.getProvider = async () => portal.provider;
   portal.clientCw = async () => ({ messages: { create: async args => {
     calls.creates.push(args); existing = { id: 91, inbox_id: 12, conversation_id: 34 }; if (options.afterCreateError) throw new Error('ambiguous accepted POST'); return options.partialAck ? { id: existing.id } : existing;
   } } });
@@ -473,12 +475,14 @@ test('Cloud PN identity is exact and consistent across echo pause, next inbound,
     await h.service.connectToWhatsapp(echo);
     const inbound = fixture('inbound-text'); value(inbound).messages[0].from = phone; value(inbound).contacts[0].wa_id = phone;
     await h.service.connectToWhatsapp(inbound);
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(h.calls.pause[0].body.remoteJid, expected);
     assert.equal(h.calls.bots[0].remoteJid, expected);
     assert.equal(h.calls.contacts[0].data.remoteJid, expected);
     const status = fixture('status-delivered'); value(status).statuses[0].id = value(echo).message_echoes[0].id;
     value(status).statuses[0].recipient_id = phone;
     await h.service.connectToWhatsapp(status);
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(h.calls.updates.at(-1).data.remoteJid, expected);
   }
 });
@@ -564,4 +568,66 @@ test('Portal acknowledgments reject nonnumeric, fractional and overflow IDs with
     const h = portalHarness(); h.portal.clientCw = async () => ({ messages: { create: async () => ({ id, inbox_id: 12, conversation_id: 34 }) } });
     await assert.rejects(h.portal.mirrorBusinessAppEcho({ instanceName: 'local-a' }, h.body), /acknowledgment.*invalid/i);
   }
+});
+
+
+test('echo retries reuse the reconciled display thread before creating a new conversation', async () => {
+  const h = portalHarness(); const instance = { instanceName: 'local-a' };
+  await h.portal.mirrorBusinessAppEcho(instance, h.body);
+  h.portal.createConversation = async () => assert.fail('existing echo must keep its original Portal thread');
+  await h.portal.mirrorBusinessAppEcho(instance, h.body);
+  const scoped = h.calls.reads.find(args => args[2]);
+  assert.equal(scoped[2].accountId, 12); assert.equal(scoped[2].inboxId, 12);
+  assert.equal(scoped[2].recipientJid, '15550000002@s.whatsapp.net');
+  assert.equal(h.calls.creates.length, 1);
+});
+
+
+test('echo mirror keeps an instance provider snapshot across another instance changing the shared service', async () => {
+  const h = portalHarness(); const original = h.portal.provider;
+  let release; const gate = new Promise(resolve => { release = resolve; });
+  const createConversation = h.portal.createConversation;
+  h.portal.createConversation = async (...args) => {
+    h.portal.provider = { accountId: 99, token: 'other-synthetic', url: 'https://other.local.invalid' };
+    release(); await gate; return createConversation(...args);
+  };
+  // Each configuration lookup still supplies the intended instance's provider.
+  h.portal.getProvider = async () => original;
+  await h.portal.mirrorBusinessAppEcho({ instanceName: 'local-a' }, h.body);
+  assert.equal(h.calls.creates[0].accountId, 12);
+  for (const read of h.calls.reads.filter(args => args[2])) assert.equal(read[2].accountId, 12);
+});
+
+
+test('ordinary Cloud inbound acknowledgment does not wait for a pending chatbot/LLM', async () => {
+  let release; const pending = new Promise(resolve => { release = resolve; });
+  const h = harness({ botPromise: pending }); let acknowledged = false;
+  const receipt = h.service.connectToWhatsapp(fixture('inbound-text')).then(() => { acknowledged = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  try { assert.equal(h.calls.bots.length, 1); assert.equal(acknowledged, true); }
+  finally { release(); await receipt; await new Promise(resolve => setImmediate(resolve)); }
+});
+
+
+test('ordinary detached chatbot failures are caught without unhandled rejection or waiting on the receipt', async () => {
+  const h = harness({ botError: true }); const logs = [];
+  h.service.logger.error = message => logs.push(message);
+  await h.service.connectToWhatsapp(fixture('inbound-text'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.calls.bots.length, 1); assert.ok(logs.includes('Asynchronous Meta message processing failed'));
+});
+
+test('a strict failure in a mixed Meta batch does not launch ordinary inbound work before retry', async () => {
+  const { MetaController } = load('src/api/integrations/channel/meta/meta.controller.ts');
+  const ordinary = [];
+  const controller = new MetaController({ instance: { findFirst: async () => ({ name: 'local-a' }) } }, { waInstances: {
+    'local-a': { connectToWhatsapp: async packet => {
+      const field = packet.entry[0].changes[0].field;
+      if (field === 'smb_message_echoes') throw new Error('synthetic verified pause unavailable');
+      ordinary.push(field);
+    } },
+  } });
+  const packet = fixture('inbound-text'); packet.entry[0].changes.push(...fixture('echo-text').entry[0].changes);
+  await assert.rejects(controller.receiveWebhook(packet), /verified pause unavailable/);
+  assert.equal(ordinary.length, 0);
 });

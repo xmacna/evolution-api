@@ -1123,6 +1123,18 @@ export class BusinessStartupService extends ChannelStartupService {
       for (const echo of content.message_echoes || []) await this.handleBusinessAppEcho(content, echo);
       return;
     }
+    for (const message of content.messages || []) {
+      if (!message?.from && message?.from_user_id) throw new Error('BSUID-only inbound identity unsupported');
+      if (!message?.from) throw new Error('Meta inbound phone identity missing');
+    }
+    // Preserve the legacy ordinary webhook acceptance boundary: a slow n8n/LLM
+    // must not hold Meta's request open. Echo and durable sync stay awaited.
+    void this.handleRegularMetaContent(content).catch(() =>
+      this.logger.error('Asynchronous Meta message processing failed'),
+    );
+  }
+
+  private async handleRegularMetaContent(content: any) {
     const database = this.configService.get<Database>('DATABASE');
     const settings = await this.findSettings();
     for (const message of content.messages || []) {
