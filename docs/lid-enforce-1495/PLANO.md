@@ -9,9 +9,9 @@ Dono: worker do ger-nyx-sol. Branch: `nyx/lid-enforce-1495-20261124`.
 - [x] GET nominal do Extract Message e replay offline sintético; rota de retorno @lid conferida.
 - [x] Evidência, receita disponível e riscos em `docs/2026-11-24-unresolved-lid-enforce.md`.
 - [x] Revisão do gerente antes de commit/push.
-- [ ] Commit com [skip ci], push próprio e PR draft contra main.
-- [ ] Handoff e bundle durável; gerente entrega ao ger-partenon-opus.
+- [x] Commit com [skip ci], push próprio e [PR draft contra main](https://github.com/xmacna/evolution-api/pull/18).
+- [x] Handoff e prova sanitizada no GitHub; bundle de transporte em RAM. Gerente entrega ao ger-partenon-opus.
 
-Próximo: commit com skip ci, push da branch e PR draft, conforme revisão do gerente.
+AGUARDA: revisão da PR e rito futuro de release pelo dono. Nenhuma tarefa de produção nesta posse.
 A receita histórica citada no brief não está disponível; validar com o dono no rito de release futuro.
 Nenhum build, imagem, produção, workflow n8n, recibo real, merge ou replay autorizado por esta tarefa.
