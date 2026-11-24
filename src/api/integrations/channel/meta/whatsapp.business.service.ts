@@ -151,6 +151,15 @@ export class BusinessStartupService extends ChannelStartupService {
     }
   }
 
+  // Cloud API phone identifiers are authoritative. Country-specific Web/Baileys
+  // heuristics would split the human-pause key from the next inbound message.
+  private cloudPhoneJid(phone: string): string {
+    if (typeof phone !== 'string' || !/^\+?\d{5,15}$/.test(phone)) {
+      throw new Error('Cloud API phone identity unsupported');
+    }
+    return `${phone.replace(/^\+/, '')}@s.whatsapp.net`;
+  }
+
   private async handleBusinessAppEcho(content: any, echo: any) {
     if (typeof echo?.id !== 'string' || !echo.id || !content.metadata?.phone_number_id) {
       throw new Error('Business app echo identity missing');
@@ -184,7 +193,7 @@ export class BusinessStartupService extends ChannelStartupService {
 
     // Preserve the exact documented E.164 digits; createJid's country-specific
     // heuristics are not an identity resolver for Cloud API/BSUID recipients.
-    const remoteJid = `${echo.to.replace(/^\+/, '')}@s.whatsapp.net`;
+    const remoteJid = this.cloudPhoneJid(echo.to);
     const key = { id: echo.id, remoteJid, fromMe: true };
     let message: any;
     let messageType: string;
@@ -562,7 +571,7 @@ export class BusinessStartupService extends ChannelStartupService {
 
         const key = {
           id: message.id,
-          remoteJid: createJid(message.from),
+          remoteJid: this.cloudPhoneJid(message.from),
           fromMe: message.from === received.metadata?.phone_number_id,
         };
 
@@ -921,7 +930,7 @@ export class BusinessStartupService extends ChannelStartupService {
           const recipient = item.recipient_id;
           const key = {
             id: item.id,
-            remoteJid: originalKey?.remoteJid || (recipient ? createJid(recipient) : undefined),
+            remoteJid: recipient ? this.cloudPhoneJid(recipient) : originalKey?.remoteJid,
             fromMe: originalKey?.fromMe ?? true,
           };
           if (!key.remoteJid) throw new Error('Meta status recipient identity unsupported');

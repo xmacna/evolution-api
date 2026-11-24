@@ -22,7 +22,7 @@ Fixtures retain documented field names and shape, replacing every identifier, ti
 
 ## Validation environment
 
-No new dependencies. Existing read-only esbuild 0.25.5 at /home/luccanxbc/awc-lote2/src/node_modules is used to transpile the actual production classes into a VM with only external boundaries stubbed. Local Node is v26.13.0; production engine requires Node 24, so this harness does not replace Node 24 CI/typecheck. No HTTP, DB, service, container, app startup or Graph calls are allowed in the harness.
+Initial implementation used no new dependencies. The manager later authorized one narrow exception for the CI security finding: pinned express-rate-limit 8.7.5 (see below). Existing read-only esbuild 0.25.5 at /home/luccanxbc/awc-lote2/src/node_modules is used to transpile the actual production classes into a VM with only external boundaries stubbed. Local Node is v26.13.0; production engine requires Node 24, so this harness does not replace Node 24 CI/typecheck. No HTTP, DB, service, container, app startup or Graph calls are allowed in the harness.
 
 
 ## Implemented behavior and boundaries
@@ -50,7 +50,7 @@ In the constrained review environment, the same npm script ran with NODE_PATH po
 
 - Initial main preimage: 15 tests RED, including the unsafe empty payload and missing echo adapter/batch handling. Evidence: evidence/echo-red.txt.
 - Signature test before signature implementation: RED (unsigned POST returned 200 instead of 403). Evidence: evidence/signature-red.txt.
-- Current implementation: 30 tests GREEN. Evidence: evidence/echo-green.txt.
+- Current implementation: 32 tests GREEN. Evidence: evidence/echo-green.txt.
 - History media guard before its fix: RED (historical value.messages incorrectly reached live processing); evidence: evidence/history-guard-red.txt.
 - git diff --check passed. Full lint/typecheck/production engine run were unavailable: no complete repo dependencies, no Prettier/ESLint or Node 24 donor found. Local Node was 26.13.0 and existing esbuild 0.25.5; the repo declares Node 24 and esbuild 0.27.7. Tests are wired into the existing inbox CI command, but no CI result is claimed here.
 
@@ -61,3 +61,14 @@ No deploy, pairing, real-number message, live DB, production API or merge was pe
 ## Workflow review
 
 The existing quality workflow runs on PRs to main and pushes to main, with isolated PostgreSQL, lint/tests and a source build. Security runs CodeQL/dependency review. Neither workflow deploys or builds/pushes a container image. The feature-branch push itself does not match their main-only push trigger. No workflow file was modified.
+
+
+## CI findings and bounded dependency exception
+
+The first CI run reported 12 lint issues in this delta and a new CodeQL missing-rate-limiting finding on the signature authorization route. The lint issues were corrected. The manager explicitly authorized adding pinned express-rate-limit 8.7.5 instead of an unmodeled custom limiter. package-lock-only with scripts/audit/funding disabled changed 20 lockfile lines; debug 4.4.3 and ip-address 10.7.2 were already locked. No dependency tree was installed on SSD. Only the middleware and ip-address package were extracted in RAM for the real middleware test, with existing debug/ms read-only.
+
+POST /webhook/meta applies the standard middleware before HMAC and controller effects, with a default 12,000 requests per observed client IP per 60 seconds. Rejection returns 429 and Retry-After; a test uses the actual library with a controlled clock to prove window recovery. The default memory store is per process and resets on restart; it does not establish distributed limits. No trust-proxy setting, client-IP spoofing bypass, workflow suppression or CodeQL dismissal was added. Deploy review must tune capacity for the actual Meta/load-balancer aggregation. Official library usage/configuration opened 2026-11-24: https://express-rate-limit.mintlify.app/quickstart/usage and https://express-rate-limit.mintlify.app/reference/configuration .
+
+A further review caught a country-identity mismatch: the generic Baileys createJid helper transforms BR/MX/AR numbers. The Cloud service now preserves authoritative E.164 digits consistently in app echo, incoming messages, contacts and available status recipients. BR/MX/AR synthetic tests execute the real legacy utility as a control, and the real service uses a dedicated exact Cloud identity helper. Previously stored heuristic-based contacts/sessions are not migrated or merged by this PR; reconciling those records requires a separately reviewed migration, not fabricated country aliases. Source proof: the official echo/messages references identify to/from/recipient_id as the actual Cloud user phone values.
+
+Additional RED evidence: evidence/cloud-identity-red.txt and evidence/rate-limit-red.txt. Current evidence/echo-green.txt includes all 32 tests. The first CI did not pass; a subsequent full CI result must be read from the PR checks rather than inferred from these local tests.

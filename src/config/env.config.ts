@@ -196,6 +196,8 @@ export type Websocket = {
 };
 
 export type WaBusiness = {
+  WEBHOOK_RATE_WINDOW_MS?: number;
+  WEBHOOK_RATE_LIMIT?: number;
   APP_SECRET?: string;
   ALLOW_UNSIGNED_LEGACY?: boolean;
   COEXISTENCE_PAUSE_URL?: string;
@@ -746,6 +748,8 @@ export class ConfigService {
         },
       },
       WA_BUSINESS: {
+        WEBHOOK_RATE_WINDOW_MS: Number.parseInt(process.env.WA_BUSINESS_WEBHOOK_RATE_WINDOW_MS, 10) || 60000,
+        WEBHOOK_RATE_LIMIT: Number.parseInt(process.env.WA_BUSINESS_WEBHOOK_RATE_LIMIT, 10) || 12000,
         APP_SECRET: process.env.WA_BUSINESS_APP_SECRET || '',
         ALLOW_UNSIGNED_LEGACY: process.env.WA_BUSINESS_ALLOW_UNSIGNED_LEGACY !== 'false',
         COEXISTENCE_PAUSE_URL: process.env.WA_BUSINESS_COEXISTENCE_PAUSE_URL || '',

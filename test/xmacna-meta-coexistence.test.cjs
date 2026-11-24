@@ -15,7 +15,7 @@ function load(relative, boundaries = {}) {
   const context = { exports, module: { exports }, Buffer, console, URL, setTimeout: fn => { fn(); return 0; }, process: { env: {} },
     require(name) {
       if (name in boundaries) return boundaries[name];
-      if (['crypto', 'path', 'stream', 'util', 'node:crypto'].includes(name)) return require(name);
+      if (['crypto', 'path', 'stream', 'util', 'node:crypto', 'express-rate-limit'].includes(name)) return require(name);
       if (name === '@api/types/wa.types') return { Events: events };
       if (name === '@api/services/channel.service') return { ChannelStartupService: class {
         get instanceId() { return this.instance.id; }
@@ -26,11 +26,7 @@ function load(relative, boundaries = {}) {
       if (name === '@config/logger.config') return { Logger: class { error() {} warn() {} } };
       if (name === '@exceptions') return { InternalServerErrorException: class extends Error {}, BadRequestException: class extends Error {} };
       if (name === '@utils/sendTelemetry') return { sendTelemetry() {} };
-      if (name === '@utils/createJid') return { createJid: n => {
-        assert.equal(typeof n, 'string', 'must never manufacture undefined JIDs');
-        assert.match(n, /^\+?\d{5,15}$/, 'must never treat BSUID as phone');
-        return n.replace(/^\+/, '') + '@s.whatsapp.net';
-      } };
+      if (name === '@utils/createJid') return load('src/utils/createJid.ts');
       if (name === 'form-data') return class { fields = []; append(...v) { this.fields.push(v); } getHeaders() { return {}; } };
       // These imports only initialize pure helpers; no actual dependency code is loaded.
       return new Proxy({}, { get(_t, key) {
@@ -398,7 +394,7 @@ function signedRouterHarness(config = {}) {
   const { MetaController } = load('src/api/integrations/channel/meta/meta.controller.ts');
   const controller = new MetaController({ instance: { findFirst: async () => ({ name: 'local-a' }) } }, { waInstances: { 'local-a': h.service } });
   const routes = {};
-  const fakeRouter = { get(route, handler) { routes['GET ' + route] = handler; return this; }, post(route, handler) { routes['POST ' + route] = handler; return this; } };
+  const fakeRouter = { get(route, handler) { routes['GET ' + route] = handler; return this; }, post(route, ...handlers) { routes['POST ' + route] = handlers; return this; } };
   const helper = 'src/api/integrations/channel/meta/meta-webhook-security.ts';
   const security = fs.existsSync(path.join(__dirname, '..', helper)) ? load(helper) : {};
   const { MetaRouter } = load('src/api/integrations/channel/meta/meta.router.ts', {
@@ -408,9 +404,20 @@ function signedRouterHarness(config = {}) {
   });
   new MetaRouter({ get: () => ({ APP_SECRET: 'synthetic-app-secret', ...config }) });
   return { ...h, security, async post(body, raw, signature) {
-    const req = { body, metaRawBody: raw, headers: { 'x-hub-signature-256': signature } };
-    const res = { code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
-    await routes['POST /webhook/meta'](req, res); return res;
+    const req = { body, metaRawBody: raw, headers: { 'x-hub-signature-256': signature }, ip: '127.0.0.1', app: { get: () => false } };
+    return new Promise((resolve, reject) => {
+      const res = { code: 200, headers: {}, status(code) { this.code = code; return this; },
+        setHeader(name, value) { this.headers[name.toLowerCase()] = value; }, getHeader(name) { return this.headers[name.toLowerCase()]; },
+        json(body) { this.body = body; resolve(this); return this; }, send(body) { return this.json(body); } };
+      const handlers = routes['POST /webhook/meta'];
+      const dispatch = index => {
+        try {
+          const result = handlers[index](req, res, error => error ? reject(error) : dispatch(index + 1));
+          if (result?.catch) result.catch(reject);
+        } catch (error) { reject(error); }
+      };
+      dispatch(0);
+    });
   } };
 }
 
@@ -455,4 +462,36 @@ test('history media follow-ups and state sync cannot enter live inbound before d
     await assert.rejects(h.service.connectToWhatsapp(p), /durable.*ingest.*unavailable/i);
     assert.equal(h.records.size + h.calls.bots.length + h.calls.pause.length + h.calls.portal.length, 0);
   }
+});
+
+test('Cloud PN identity is exact and consistent across echo pause, next inbound, contacts and statuses (BR/MX/AR)', async () => {
+  const { createJid } = load('src/utils/createJid.ts');
+  for (const phone of ['5531990000000', '5215500000000', '5491100000000']) {
+    const h = harness(); const expected = phone + '@s.whatsapp.net';
+    assert.notEqual(createJid(phone), expected, 'control must exercise an actual country heuristic');
+    const echo = fixture('echo-text'); value(echo).message_echoes[0].to = phone; value(echo).contacts[0].wa_id = phone;
+    await h.service.connectToWhatsapp(echo);
+    const inbound = fixture('inbound-text'); value(inbound).messages[0].from = phone; value(inbound).contacts[0].wa_id = phone;
+    await h.service.connectToWhatsapp(inbound);
+    assert.equal(h.calls.pause[0].body.remoteJid, expected);
+    assert.equal(h.calls.bots[0].remoteJid, expected);
+    assert.equal(h.calls.contacts[0].data.remoteJid, expected);
+    const status = fixture('status-delivered'); value(status).statuses[0].id = value(echo).message_echoes[0].id;
+    value(status).statuses[0].recipient_id = phone;
+    await h.service.connectToWhatsapp(status);
+    assert.equal(h.calls.updates.at(-1).data.remoteJid, expected);
+  }
+});
+
+
+test('actual Meta route rate-limits before HMAC/side effects with Retry-After and recovers after the window', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const h = signedRouterHarness({ WEBHOOK_RATE_LIMIT: 1, WEBHOOK_RATE_WINDOW_MS: 1000 });
+  const body = fixture('echo-text'); const raw = Buffer.from(JSON.stringify(body));
+  assert.equal((await h.post(body, raw, undefined)).code, 403);
+  const limited = await h.post(body, raw, undefined);
+  assert.equal(limited.code, 429); assert.ok(Number(limited.headers['retry-after']) > 0);
+  assert.equal(h.records.size + h.calls.pause.length + h.calls.portal.length, 0);
+  t.mock.timers.tick(1001);
+  assert.equal((await h.post(body, raw, undefined)).code, 403);
 });
