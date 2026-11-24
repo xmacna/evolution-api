@@ -197,24 +197,72 @@ export class BusinessStartupService extends ChannelStartupService {
     const key = { id: echo.id, remoteJid, fromMe: true };
     let message: any;
     let messageType: string;
+    let unsupportedContent = false;
     if (echo.type === 'text' && typeof echo.text?.body === 'string') {
       message = { conversation: echo.text.body };
       messageType = 'conversation';
     } else if (['image', 'video', 'document', 'audio', 'sticker'].includes(echo.type) && echo[echo.type]?.id) {
       messageType = `${echo.type}Message`;
       message = { [messageType]: echo[echo.type] };
+    } else if (
+      echo.type === 'location' &&
+      Number.isFinite(echo.location?.latitude) &&
+      Number.isFinite(echo.location?.longitude)
+    ) {
+      messageType = 'locationMessage';
+      message = this.messageLocationJson({ messages: [echo] });
+    } else if (echo.type === 'reaction' && typeof echo.reaction?.message_id === 'string') {
+      messageType = 'reactionMessage';
+      message = this.messageReactionJson({ messages: [echo] });
+    } else if (
+      echo.type === 'contacts' &&
+      Array.isArray(echo.contacts) &&
+      echo.contacts.length &&
+      echo.contacts.every((contact: any) => typeof contact.name?.formatted_name === 'string')
+    ) {
+      messageType = 'conversation';
+      const contacts = echo.contacts.map((contact: any) => {
+        const lines = [contact.name.formatted_name];
+        for (const phone of contact.phones || []) lines.push(`Telefone: ${phone.phone || phone.wa_id || ''}`);
+        for (const email of contact.emails || []) lines.push(`E-mail: ${email.email || ''}`);
+        for (const url of contact.urls || []) lines.push(`Site: ${url.url || ''}`);
+        for (const address of contact.addresses || []) {
+          lines.push(
+            `Endereço: ${[address.street, address.city, address.state, address.zip, address.country]
+              .filter(Boolean)
+              .join(', ')}`,
+          );
+        }
+        if (contact.org) {
+          lines.push(
+            `Organização: ${[contact.org.company, contact.org.department, contact.org.title]
+              .filter(Boolean)
+              .join(', ')}`,
+          );
+        }
+        if (contact.birthday) lines.push(`Aniversário: ${contact.birthday}`);
+        return lines.join('\n');
+      });
+      message = { conversation: contacts.join('\n\n') };
     } else if (echo.type === 'revoke' && echo.revoke?.original_message_id) {
       messageType = 'conversation';
       message = { conversation: '[Mensagem excluída no WhatsApp Business]' };
     } else if (echo.type === 'edit' && echo.edit?.original_message_id && echo.edit?.message) {
       const edited = echo.edit.message;
       const text = edited.text?.body ?? edited[edited.type]?.caption;
-      if (typeof text !== 'string') throw new Error('Business app echo edit content unsupported');
-      messageType = 'conversation';
-      message = { conversation: `[Editada no WhatsApp Business] ${text}` };
-    } else {
-      throw new Error('Business app echo content unsupported');
+      if (typeof text === 'string') {
+        messageType = 'conversation';
+        message = { conversation: `[Editada no WhatsApp Business] ${text}` };
+      }
     }
+    if (!message) {
+      // Valid, authenticated human activity still pauses the bot. Preserve all
+      // content before surfacing unsupported presentation; never acknowledge it.
+      unsupportedContent = true;
+      messageType = 'businessAppUnsupportedMessage';
+      message = { businessAppUnsupportedMessage: echo };
+    }
+    message = JSON.parse(JSON.stringify(message));
     const raw: any = {
       key,
       message,
@@ -226,6 +274,8 @@ export class BusinessStartupService extends ChannelStartupService {
         origin: 'whatsapp_business_app',
         phoneNumberId: content.metadata.phone_number_id,
         recipientUserId: echo.to_user_id,
+        businessAppPayload:
+          unsupportedContent || ['location', 'contacts', 'reaction'].includes(echo.type) ? echo : undefined,
         originalMessageId: echo.revoke?.original_message_id || echo.edit?.original_message_id,
       },
     };
@@ -303,6 +353,8 @@ export class BusinessStartupService extends ChannelStartupService {
         data: { status: 'paused' },
       });
     }
+    if (unsupportedContent)
+      throw new Error('Business app echo content unsupported; payload retained and human pause verified');
     const mirrored = await this.chatwootService.mirrorBusinessAppEcho(instance, raw, conversationId);
     if (!mirrored?.id || !mirrored?.conversation_id || !mirrored?.inbox_id) {
       throw new Error('Business app echo Portal acknowledgment missing');

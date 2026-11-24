@@ -204,7 +204,7 @@ function portalHarness(options = {}) {
       getExistingMessageBySourceId: async (...args) => { calls.reads.push(args); return existing && options.partialAck ? { id: existing.id } : existing; },
       getExistingSourceIds: async () => new Set(existing ? ['WAID:wamid.LOCAL.echo.1'] : []),
     } },
-    '@utils/i18n': {}, 'dayjs': {}, 'long': {}, 'mime-types': { extension: () => 'jpg' }, 'baileys': {},
+    '@utils/i18n': { t: key => key }, 'dayjs': {}, 'long': {}, 'mime-types': { extension: () => 'jpg' }, 'baileys': {},
     axios: { request: async args => { calls.media.push(args); existing = { id: 91, inbox_id: 12, conversation_id: 34 }; return { data: existing }; } },
     '@figuro/chatwoot-sdk': {}, '@figuro/chatwoot-sdk/dist/core/request': {},
   });
@@ -494,4 +494,58 @@ test('actual Meta route rate-limits before HMAC/side effects with Retry-After an
   assert.equal(h.records.size + h.calls.pause.length + h.calls.portal.length, 0);
   t.mock.timers.tick(1001);
   assert.equal((await h.post(body, raw, undefined)).code, 403);
+});
+
+test('official-derived location, shared contacts and reaction echoes pause and mirror without live inbound', async () => {
+  const contents = fixture('complex-content');
+  for (const type of ['location', 'contacts', 'reaction']) {
+    const h = harness(); const p = fixture('echo-text'); const echo = value(p).message_echoes[0];
+    echo.type = type; delete echo.text; echo[type] = contents[type];
+    await h.service.connectToWhatsapp(p);
+    assert.equal(h.calls.pause.length, 1); assert.equal(h.calls.portal.length, 1);
+    assert.equal(h.calls.bots.length + h.calls.webhooks.length + h.calls.contacts.length, 0);
+    assert.equal(h.calls.portal[0][1].key.fromMe, true);
+    assert.equal([...h.records.values()][0].contextInfo.businessAppPayload.type, type);
+  }
+});
+
+test('unknown signed app content is durably retained and verified human pause happens before mirror failure', async () => {
+  const h = harness(); const p = fixture('echo-text'); const echo = value(p).message_echoes[0];
+  echo.type = 'future_local_type'; delete echo.text; echo.future_local_type = { synthetic: 'retained' };
+  await assert.rejects(h.service.connectToWhatsapp(p), /content unsupported/);
+  assert.equal(h.calls.pause.length, 1); assert.equal(h.calls.portal.length + h.calls.bots.length, 0);
+  const saved = [...h.records.values()][0]; assert.ok(saved);
+  assert.equal(saved.message.businessAppUnsupportedMessage.future_local_type.synthetic, 'retained');
+  assert.notEqual(saved.contextInfo.coexistenceEchoDelivered, true);
+  assert.equal(h.calls.updates[0].data.status, 'paused');
+});
+
+test('actual Portal echo adapter renders location and reaction as outgoing notices, never media or WhatsApp sends', async () => {
+  const examples = [
+    { messageType: 'locationMessage', message: { locationMessage: { degreesLatitude: 0, degreesLongitude: 0, name: 'Synthetic point' } }, expected: /0,0/ },
+    { messageType: 'reactionMessage', message: { reactionMessage: { key: { id: 'wamid.LOCAL.target' }, text: '😀' } }, expected: /😀.*wamid.LOCAL.target/ },
+  ];
+  for (const example of examples) {
+    const h = portalHarness(); Object.assign(h.body, example);
+    await h.portal.mirrorBusinessAppEcho({ instanceName: 'local-a' }, h.body);
+    assert.equal(h.calls.creates.length, 1); assert.equal(h.calls.media.length, 0);
+    assert.match(h.calls.creates[0].data.content, example.expected);
+    assert.equal(h.calls.creates[0].data.source_id, 'WAID:wamid.LOCAL.echo.1');
+  }
+});
+
+
+test('reaction removal without emoji is displayed faithfully and shared contacts include optional non-phone data', async () => {
+  const h = harness(); const p = fixture('echo-text'); const echo = value(p).message_echoes[0];
+  echo.type = 'reaction'; delete echo.text; echo.reaction = { message_id: 'wamid.LOCAL.target' };
+  const portal = portalHarness(); h.service.chatwootService = portal.portal;
+  await h.service.connectToWhatsapp(p);
+  assert.match(portal.calls.creates[0].data.content, /Reação removida.*wamid.LOCAL.target/);
+  const contacts = harness(); const c = fixture('echo-text'); const ce = value(c).message_echoes[0];
+  ce.type = 'contacts'; delete ce.text; ce.contacts = fixture('complex-content').contacts;
+  await contacts.service.connectToWhatsapp(c);
+  const rendered = contacts.calls.portal[0][1].message.conversation;
+  for (const expected of ['Synthetic Contact One', 'Synthetic Email-only Contact', 'second@example.invalid', 'Synthetic street', 'Synthetic department']) {
+    assert.ok(rendered.includes(expected));
+  }
 });

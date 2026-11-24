@@ -2008,8 +2008,18 @@ export class ChatwootService {
     if (existing) return acknowledge(existing);
     try {
       let mirrored: any;
-      const content = body.message?.conversation;
-      if (body.messageType === 'conversation') {
+      let content = body.message?.conversation;
+      if (body.messageType === 'locationMessage') {
+        content = this.getConversationMessage(body.message);
+        const sourceUrl = body.contextInfo?.businessAppPayload?.location?.url;
+        if (sourceUrl) content += `\n${sourceUrl}`;
+      } else if (body.messageType === 'reactionMessage') {
+        const reaction = body.message.reactionMessage;
+        content = reaction.text
+          ? `Reação ${reaction.text} à mensagem ${reaction.key.id}`
+          : `Reação removida da mensagem ${reaction.key.id}`;
+      }
+      if (['conversation', 'locationMessage', 'reactionMessage'].includes(body.messageType)) {
         mirrored = await client.messages.create({
           accountId: this.provider.accountId,
           conversationId,

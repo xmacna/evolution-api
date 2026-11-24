@@ -50,7 +50,7 @@ In the constrained review environment, the same npm script ran with NODE_PATH po
 
 - Initial main preimage: 15 tests RED, including the unsafe empty payload and missing echo adapter/batch handling. Evidence: evidence/echo-red.txt.
 - Signature test before signature implementation: RED (unsigned POST returned 200 instead of 403). Evidence: evidence/signature-red.txt.
-- Current implementation: 32 tests GREEN. Evidence: evidence/echo-green.txt.
+- Current implementation: 36 tests GREEN. Evidence: evidence/echo-green.txt.
 - History media guard before its fix: RED (historical value.messages incorrectly reached live processing); evidence: evidence/history-guard-red.txt.
 - git diff --check passed. Full lint/typecheck/production engine run were unavailable: no complete repo dependencies, no Prettier/ESLint or Node 24 donor found. Local Node was 26.13.0 and existing esbuild 0.25.5; the repo declares Node 24 and esbuild 0.27.7. Tests are wired into the existing inbox CI command, but no CI result is claimed here.
 
@@ -71,4 +71,20 @@ POST /webhook/meta applies the standard middleware before HMAC and controller ef
 
 A further review caught a country-identity mismatch: the generic Baileys createJid helper transforms BR/MX/AR numbers. The Cloud service now preserves authoritative E.164 digits consistently in app echo, incoming messages, contacts and available status recipients. BR/MX/AR synthetic tests execute the real legacy utility as a control, and the real service uses a dedicated exact Cloud identity helper. Previously stored heuristic-based contacts/sessions are not migrated or merged by this PR; reconciling those records requires a separately reviewed migration, not fabricated country aliases. Source proof: the official echo/messages references identify to/from/recipient_id as the actual Cloud user phone values.
 
-Additional RED evidence: evidence/cloud-identity-red.txt and evidence/rate-limit-red.txt. Current evidence/echo-green.txt includes all 32 tests. The first CI did not pass; a subsequent full CI result must be read from the PR checks rather than inferred from these local tests.
+Additional RED evidence: evidence/cloud-identity-red.txt and evidence/rate-limit-red.txt. Current evidence/echo-green.txt includes all 36 tests. The first CI did not pass; a subsequent full CI result must be read from the PR checks rather than inferred from these local tests.
+
+
+## Other app message types and future content
+
+Static location, shared contacts and reactions are now covered. Location reuses the existing pure location normalization and Portal renderer. Reactions reuse the message helper and display an outgoing Portuguese notice with the target message ID; absent emoji displays removal. Shared contacts display their names, optional phones/emails/sites/addresses/organization/birthday, including contacts without phones. The complete original payload remains in local contextInfo for these structured messages. They follow the same verified-pause and WAID mirror path and never create a live inbound or send a reaction/location/contact back to WhatsApp.
+
+An authenticated phone-addressable echo whose presentation is unknown is stored durably as businessAppUnsupportedMessage before the verified pause. The Portal thread is resolved for binding, the real pause is verified, and the mirror fails explicitly while the payload remains pending. It is not silently discarded or acknowledged as complete. BSUID-only remains the separate identity block described above.
+
+Official sources opened 2026-11-24:
+
+- https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/location — coordinates, optional name/address/url and full webhook example.
+- https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/contacts-messages — contacts array; formatted name required; phone and other metadata optional.
+- https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/reaction-messages — message_id/emoji request example, fetched as public text/markdown after the web tool returned 429.
+- https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/reaction — full reaction and removal webhook examples, including omitted emoji, fetched as public text/markdown and read from the manager's RAM copy.
+
+Evidence/complex-echo-red.txt records the failing new cases before implementation; echo-green.txt includes the passing 36-case suite. Complex-content.json replaces all names/contacts/locations/IDs/addresses with synthetic values; it is combined with the official-derived echo envelope. Existing pinned Prettier 3.9.6 was fetched into private RAM, verified against package-lock's SHA-512 integrity, and used only on the changed source files. No formatter dependency or lock entry changed.
