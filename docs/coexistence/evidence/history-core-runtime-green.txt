@@ -1,0 +1,31 @@
+
+> evolution-api@2.3.7 test:xmacna-meta-sync
+> node --test test/xmacna-meta-sync.test.cjs test/xmacna-meta-sync-runtime.test.cjs
+
+✔ runtime stays disabled by default/exact map mismatch; missing guard or unknown actor fail readiness (125.712777ms)
+✔ actual coordinator captures before projection, recovers from restart and preserves directions/actor (34.464538ms)
+✔ fresh destination source fences stop provider or phone rebind, with raw capture retained (14.347465ms)
+✔ official phone+BSUID pairing maps later media only within instance; opaque identity stays durable/blocked (27.417282ms)
+✔ contact tombstones are stored without deleting a Portal conversation or invoking a pause path (27.722182ms)
+✔ readiness reports actual binding and receiver fields but no import completion (85.250027ms)
+✔ registration is idempotent, conserves its original deadline and binds request metadata once (9.383685ms)
+✔ capture persists an immutable payload before processing; restart resumes it, duplicate capture stays one chunk (11.039153ms)
+✔ capture errors cannot be acknowledged and foreign tenants cannot share captured work (9.011703ms)
+✔ source progress100 and phase2 are distinct from local processing and contact source completion (19.172628ms)
+✔ lease expiry reclaims persisted cursor after a crash and concurrent drain claims only once (9.524782ms)
+✔ projection failure remains retryable with the same durable payload across restart (11.855564ms)
+✔ unsupported identity is explicit quarantined work, preserving raw data without fake phones (8.071085ms)
+✔ late payload is captured after deadline and remains visible for local completion (7.284086ms)
+✔ history consent error and media follow-up retain the official shapes without live message dispatch (11.746567ms)
+✔ an expired worker cannot advance cursor or finish after its projection await (20.716347ms)
+✔ rebinding an instance cannot advertise or capture into a stale account/phone generation (16.457095ms)
+✔ a receiver rebound to another account cannot drain the earlier run (14.689461ms)
+✔ Portal target rebind blocks readiness/projection but retains durable captures for original run (11.603618ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 378.854339

@@ -1,0 +1,25 @@
+{
+  "location": {
+    "latitude": 0,
+    "longitude": 0,
+    "name": "Synthetic meeting point",
+    "address": "Synthetic address",
+    "url": "https://location.local.invalid"
+  },
+  "contacts": [
+    {
+      "name": { "formatted_name": "Synthetic Contact One", "first_name": "Synthetic" },
+      "phones": [{ "phone": "+15550000003", "wa_id": "15550000003", "type": "Work" }],
+      "emails": [{ "email": "synthetic@example.invalid", "type": "Work" }],
+      "addresses": [{ "street": "Synthetic street", "city": "Synthetic city", "country": "Synthetic country" }],
+      "urls": [{ "url": "https://contact.local.invalid", "type": "Work" }],
+      "org": { "company": "Synthetic company", "department": "Synthetic department", "title": "Synthetic title" },
+      "birthday": "2000-01-01"
+    },
+    {
+      "name": { "formatted_name": "Synthetic Email-only Contact" },
+      "emails": [{ "email": "second@example.invalid", "type": "Work" }]
+    }
+  ],
+  "reaction": { "message_id": "wamid.LOCAL.target", "emoji": "😀" }
+}

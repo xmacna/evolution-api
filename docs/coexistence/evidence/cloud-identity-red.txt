@@ -1,0 +1,65 @@
+
+> evolution-api@2.3.7 test:xmacna-meta-coexistence
+> node --test test/xmacna-meta-coexistence.test.cjs
+
+✔ empty/unknown changes and absent arrays do not dereference statuses[0] (135.234141ms)
+✔ official echo: durable fromMe, verified human pause and Portal, no bot/inbound/contact side effects (17.612403ms)
+✔ awaits failure, retries pending Portal delivery, and suppresses completed duplicates (18.740386ms)
+✔ same stable message id remains isolated across instances (31.61214ms)
+✔ concurrent deliveries share work until acknowledgment (13.740205ms)
+✔ pause failures, missing configuration and unverified response cannot be acknowledged (48.627477ms)
+✔ a verified superseding resume is accepted without repausing native sessions (16.473499ms)
+✔ BSUID-only is a valid unsupported identity: explicit failure without a fake JID or success (20.362174ms)
+✔ foreign phone binding is rejected and malformed batch is guarded (15.53087ms)
+✔ all echoes/entries/changes processed, preserving official inbound and status control behavior (19.952954ms)
+✔ unknown status message does not swallow subsequent delivered status (16.142356ms)
+✔ persistence failure propagates and never acknowledges partial echo (15.511537ms)
+✔ real Portal echo adapter uses outgoing + WAID guard and reconciles duplicates before POST (19.822455ms)
+✔ Portal adapter requires reconciliation support and positive acknowledgment (33.264219ms)
+✔ MetaController awaits and routes each change only to its bound instance (6.282987ms)
+✔ retry after Portal success and final DB failure reconciles the accepted source id (47.964662ms)
+✔ durable duplicate collision fails even after completion, and JSONB key order is irrelevant (17.892012ms)
+✔ official media shape is persisted as outgoing without inbound lead/bot creation (82.638901ms)
+✔ revoke/edit are explicit thread notices preserving original id, no replay to WhatsApp/bot (31.667589ms)
+✔ missing Portal configuration never records a completed echo even with no native session (15.029249ms)
+✔ real Portal media adapter posts attachment with WAID/outgoing, deduplicates after retry (21.949532ms)
+✔ real Portal receiveWebhook WAID guard does not echo the reflected message back to WhatsApp (13.65651ms)
+✔ real native bot process ignores the next inbound when echo paused its existing session (20.819711ms)
+✔ transport status changes cannot reopen a completed echo or repeat the human pause (21.984715ms)
+✔ every Portal acknowledgment path resolves inbox/conversation, including ambiguous accepted POST (26.962937ms)
+✔ real Business media downloader reads media through GET only and keeps the app echo outgoing (30.160247ms)
+✔ actual Meta route authenticates raw-byte signatures before any coexistence effect (178.449342ms)
+✔ raw capture keeps exact bytes solely for Meta, including query and trailing slash (3.447618ms)
+✔ legacy unsigned traffic is explicit compatibility only; configured secret validates all POSTs (80.166981ms)
+✔ history media follow-ups and state sync cannot enter live inbound before durable sync is implemented (28.737182ms)
+✖ Cloud PN identity is exact and consistent across echo pause, next inbound, contacts and statuses (BR/MX/AR) (20.521315ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 30
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1264.716495
+
+✖ failing tests:
+
+test at test/xmacna-meta-coexistence.test.cjs:456:1
+✖ Cloud PN identity is exact and consistent across echo pause, next inbound, contacts and statuses (BR/MX/AR) (20.521315ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + '553190000000@s.whatsapp.net'
+  - '5531990000000@s.whatsapp.net'
+          ^
+
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:466:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '553190000000@s.whatsapp.net',
+    expected: '5531990000000@s.whatsapp.net',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

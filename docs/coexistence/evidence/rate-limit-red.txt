@@ -1,0 +1,63 @@
+
+> evolution-api@2.3.7 test:xmacna-meta-coexistence
+> node --test test/xmacna-meta-coexistence.test.cjs
+
+✔ empty/unknown changes and absent arrays do not dereference statuses[0] (106.573124ms)
+✔ official echo: durable fromMe, verified human pause and Portal, no bot/inbound/contact side effects (16.006851ms)
+✔ awaits failure, retries pending Portal delivery, and suppresses completed duplicates (15.020621ms)
+✔ same stable message id remains isolated across instances (28.001477ms)
+✔ concurrent deliveries share work until acknowledgment (12.800752ms)
+✔ pause failures, missing configuration and unverified response cannot be acknowledged (41.290733ms)
+✔ a verified superseding resume is accepted without repausing native sessions (15.599676ms)
+✔ BSUID-only is a valid unsupported identity: explicit failure without a fake JID or success (13.379616ms)
+✔ foreign phone binding is rejected and malformed batch is guarded (13.176225ms)
+✔ all echoes/entries/changes processed, preserving official inbound and status control behavior (16.337004ms)
+✔ unknown status message does not swallow subsequent delivered status (13.083017ms)
+✔ persistence failure propagates and never acknowledges partial echo (13.700555ms)
+✔ real Portal echo adapter uses outgoing + WAID guard and reconciles duplicates before POST (14.094121ms)
+✔ Portal adapter requires reconciliation support and positive acknowledgment (26.63301ms)
+✔ MetaController awaits and routes each change only to its bound instance (5.532168ms)
+✔ retry after Portal success and final DB failure reconciles the accepted source id (38.807672ms)
+✔ durable duplicate collision fails even after completion, and JSONB key order is irrelevant (14.424498ms)
+✔ official media shape is persisted as outgoing without inbound lead/bot creation (69.704556ms)
+✔ revoke/edit are explicit thread notices preserving original id, no replay to WhatsApp/bot (30.213067ms)
+✔ missing Portal configuration never records a completed echo even with no native session (16.655863ms)
+✔ real Portal media adapter posts attachment with WAID/outgoing, deduplicates after retry (16.380486ms)
+✔ real Portal receiveWebhook WAID guard does not echo the reflected message back to WhatsApp (14.339588ms)
+✔ real native bot process ignores the next inbound when echo paused its existing session (17.902933ms)
+✔ transport status changes cannot reopen a completed echo or repeat the human pause (14.962618ms)
+✔ every Portal acknowledgment path resolves inbox/conversation, including ambiguous accepted POST (24.258269ms)
+✔ real Business media downloader reads media through GET only and keeps the app echo outgoing (26.75638ms)
+✔ actual Meta route authenticates raw-byte signatures before any coexistence effect (151.132992ms)
+✔ raw capture keeps exact bytes solely for Meta, including query and trailing slash (2.952902ms)
+✔ legacy unsigned traffic is explicit compatibility only; configured secret validates all POSTs (61.754497ms)
+✔ history media follow-ups and state sync cannot enter live inbound before durable sync is implemented (26.051711ms)
+✔ Cloud PN identity is exact and consistent across echo pause, next inbound, contacts and statuses (BR/MX/AR) (43.731489ms)
+✖ actual Meta route rate-limits before HMAC/side effects with Retry-After and recovers after the window (25.956705ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 31
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1104.429162
+
+✖ failing tests:
+
+test at test/xmacna-meta-coexistence.test.cjs:487:1
+✖ actual Meta route rate-limits before HMAC/side effects with Retry-After and recovers after the window (25.956705ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  403 !== 429
+
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:493:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 403,
+    expected: 429,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

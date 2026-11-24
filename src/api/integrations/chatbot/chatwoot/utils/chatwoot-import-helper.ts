@@ -206,9 +206,42 @@ class ChatwootImport {
     }
   }
 
-  public async getExistingMessageBySourceId(sourceId: string, conversationId: number) {
+  public async getExistingMessageBySourceId(
+    sourceId: string,
+    conversationId: number,
+    scope?: { accountId: string | number; inboxId: number; recipientJid: string },
+  ) {
     const formattedSourceId = `WAID:${sourceId.replace('WAID:', '')}`;
     const pgClient = postgresClient.getChatwootConnection();
+    if (scope) {
+      if (!/^\d{5,15}@s\.whatsapp\.net$/.test(scope.recipientJid)) {
+        throw new Error('Business app echo Portal source identity unsupported');
+      }
+      // API conversation IDs are per-account display_id, not the internal FK.
+      // Reconcile by account/inbox/source before choosing a current thread.
+      const result = await pgClient.query(
+        `SELECT m.id, m.inbox_id, c.display_id AS conversation_id, m.source_id,
+           co.identifier AS contact_identifier, co.phone_number AS contact_phone
+         FROM messages m JOIN conversations c ON c.id = m.conversation_id
+         JOIN contacts co ON co.id = c.contact_id AND co.account_id = m.account_id
+         WHERE m.source_id = $1 AND m.account_id = $2 AND m.inbox_id = $3
+           AND c.account_id = m.account_id AND c.inbox_id = m.inbox_id
+         ORDER BY m.id ASC LIMIT 1`,
+        [formattedSourceId, scope.accountId, scope.inboxId],
+      );
+      const message = result.rows[0];
+      if (!message) return null;
+      const phone = '+' + scope.recipientJid.split('@')[0];
+      if (message.contact_identifier !== scope.recipientJid && message.contact_phone !== phone) {
+        throw new Error('Business app echo Portal source identity mismatch');
+      }
+      return {
+        id: message.id,
+        inbox_id: message.inbox_id,
+        conversation_id: message.conversation_id,
+        source_id: message.source_id,
+      };
+    }
     const result = await pgClient.query(
       `SELECT id, inbox_id, conversation_id, source_id
        FROM messages

@@ -1,0 +1,2 @@
+postgresql: datamodel validation/diff passed (no database target)
+mysql: datamodel validation/diff passed (no database target)

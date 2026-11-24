@@ -52,6 +52,24 @@ export class InstanceRouter extends RouterBroker {
         });
         return res.status(HttpStatus.OK).json(response);
       })
+      .get(this.routerPath('coexistenceSyncStatus'), ...guards, async (req, res) => {
+        const response = await this.dataValidate<null>({
+          request: req,
+          schema: null,
+          ClassRef: InstanceDto,
+          execute: (instance) => instanceController.coexistenceSyncStatus(instance),
+        });
+        return res.status(HttpStatus.OK).json(response);
+      })
+      .post(this.routerPath('coexistenceSyncStart'), ...guards, async (req, res) => {
+        const response = await this.dataValidate<any>({
+          request: req,
+          schema: null,
+          ClassRef: InstanceDto,
+          execute: (instance, data) => instanceController.coexistenceSyncStart(instance, data),
+        });
+        return res.status(HttpStatus.OK).json(response);
+      })
       .get(this.routerPath('connect'), ...guards, async (req, res) => {
         const response = await this.dataValidate<InstanceDto>({
           request: req,

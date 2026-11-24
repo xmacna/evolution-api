@@ -1,0 +1,58 @@
+
+> evolution-api@2.3.7 test:xmacna-meta-coexistence
+> node --test test/xmacna-meta-coexistence.test.cjs
+
+✔ empty/unknown changes and absent arrays do not dereference statuses[0] (177.439949ms)
+✔ official echo: durable fromMe, verified human pause and Portal, no bot/inbound/contact side effects (26.607901ms)
+✔ awaits failure, retries pending Portal delivery, and suppresses completed duplicates (35.446721ms)
+✔ same stable message id remains isolated across instances (58.57073ms)
+✔ concurrent deliveries share work until acknowledgment (27.770632ms)
+✔ pause failures, missing configuration and unverified response cannot be acknowledged (75.713809ms)
+✔ a verified superseding resume is accepted without repausing native sessions (25.344395ms)
+✔ BSUID-only is a valid unsupported identity: explicit failure without a fake JID or success (21.275861ms)
+✔ foreign phone binding is rejected and malformed batch is guarded (24.586503ms)
+✔ all echoes/entries/changes processed, preserving official inbound and status control behavior (33.122499ms)
+✔ unknown status message does not swallow subsequent delivered status (26.50409ms)
+✔ persistence failure propagates and never acknowledges partial echo (22.372194ms)
+✔ real Portal echo adapter uses outgoing + WAID guard and reconciles duplicates before POST (29.387662ms)
+✔ Portal adapter requires reconciliation support and positive acknowledgment (59.38088ms)
+✔ MetaController awaits and routes each change only to its bound instance (7.396216ms)
+✔ retry after Portal success and final DB failure reconciles the accepted source id (81.985266ms)
+✔ durable duplicate collision fails even after completion, and JSONB key order is irrelevant (22.570956ms)
+✔ official media shape is persisted as outgoing without inbound lead/bot creation (117.331719ms)
+✔ revoke/edit are explicit thread notices preserving original id, no replay to WhatsApp/bot (49.850058ms)
+✔ missing Portal configuration never records a completed echo even with no native session (24.312727ms)
+✔ real Portal media adapter posts attachment with WAID/outgoing, deduplicates after retry (33.936901ms)
+✔ real Portal receiveWebhook WAID guard does not echo the reflected message back to WhatsApp (33.207804ms)
+✔ real native bot process ignores the next inbound when echo paused its existing session (31.848547ms)
+✔ transport status changes cannot reopen a completed echo or repeat the human pause (24.340156ms)
+✔ every Portal acknowledgment path resolves inbox/conversation, including ambiguous accepted POST (56.078512ms)
+✔ real Business media downloader reads media through GET only and keeps the app echo outgoing (53.577435ms)
+✖ actual Meta route authenticates raw-byte signatures before any coexistence effect (86.807159ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 26
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1579.366607
+
+✖ failing tests:
+
+test at test/xmacna-meta-coexistence.test.cjs:417:1
+✖ actual Meta route authenticates raw-byte signatures before any coexistence effect (86.807159ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  200 !== 403
+
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:425:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 403,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

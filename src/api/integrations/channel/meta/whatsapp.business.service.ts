@@ -27,10 +27,14 @@ import { status } from '@utils/renderStatus';
 import { sendTelemetry } from '@utils/sendTelemetry';
 import axios from 'axios';
 import { arrayUnique, isURL } from 'class-validator';
+import { createHash } from 'crypto';
 import EventEmitter2 from 'eventemitter2';
 import FormData from 'form-data';
 import mimeTypes from 'mime-types';
 import { join } from 'path';
+
+import { BusinessAppSyncRegistration } from './business-app-sync';
+import { BusinessAppSyncRuntime } from './business-app-sync-runtime';
 
 export class BusinessStartupService extends ChannelStartupService {
   constructor(
@@ -55,6 +59,8 @@ export class BusinessStartupService extends ChannelStartupService {
   }
 
   public async closeClient() {
+    this.businessAppSyncRuntime?.close();
+    this.businessAppSyncRuntime = undefined;
     this.stateConnection = { state: 'close' };
   }
 
@@ -123,24 +129,290 @@ export class BusinessStartupService extends ChannelStartupService {
     return await this.post(content, 'whatsapp_business_profile');
   }
 
-  public async connectToWhatsapp(data?: any): Promise<any> {
-    if (!data) return;
+  // Pending promises coalesce concurrent delivery in this process. Message rows,
+  // not this map, are the durable acknowledgment across retries/restarts.
+  private businessAppEchoes = new Map<string, Promise<void>>();
 
-    const content = data.entry[0].changes[0].value;
+  private businessAppSyncRuntime?: BusinessAppSyncRuntime;
+  private businessAppSyncNumber?: string;
+
+  private syncRuntime() {
+    if (!this.businessAppSyncRuntime || this.businessAppSyncNumber !== this.number) {
+      this.businessAppSyncRuntime?.close();
+      this.businessAppSyncNumber = this.number;
+      this.businessAppSyncRuntime = new BusinessAppSyncRuntime(
+        this.prismaRepository,
+        this.configService,
+        { instanceId: this.instanceId, instanceName: this.instanceName, number: this.number },
+        (message) => this.getBase64FromMediaMessage(message, true),
+        () => this.logger.error('Business app sync background projection failed'),
+      );
+    }
+    return this.businessAppSyncRuntime.sync;
+  }
+
+  public async coexistenceSyncStatus() {
+    return this.syncRuntime().status();
+  }
+  public async coexistenceSyncStart(data: BusinessAppSyncRegistration) {
+    return this.syncRuntime().start(data);
+  }
+
+  public async connectToWhatsapp(data?: any): Promise<any> {
+    if (!data) {
+      this.syncRuntime();
+      return;
+    }
 
     try {
-      this.loadChatwoot();
-
-      this.eventHandler(content);
-
-      this.phoneNumber = createJid(content.messages ? content.messages[0].from : content.statuses[0]?.recipient_id);
+      await this.loadChatwoot();
+      for (const entry of data.entry || []) {
+        for (const change of entry.changes || []) {
+          const content = change?.value;
+          if (!content) continue;
+          const numberId = content.metadata?.phone_number_id;
+          if (numberId && this.number && numberId !== this.number) {
+            throw new Error('Meta webhook phone binding mismatch: another instance');
+          }
+          await this.eventHandler(content, change.field, entry.id);
+        }
+      }
     } catch (error) {
-      this.logger.error(error);
-      throw new InternalServerErrorException(error?.toString());
+      // Do not log payloads or HTTP errors carrying authentication headers.
+      this.logger.error('Meta webhook processing failed');
+      const durableSync =
+        Array.isArray(data?.entry) &&
+        data.entry.some(
+          (entry: any) =>
+            Array.isArray(entry.changes) &&
+            entry.changes.some((change: any) => ['history', 'smb_app_state_sync'].includes(change?.field)),
+        );
+      if (durableSync) throw new InternalServerErrorException('Business app durable sync ingest failed');
+      throw new InternalServerErrorException(error?.message || 'Meta webhook processing failed');
     }
   }
 
-  private async downloadMediaMessage(message: any) {
+  // Cloud API phone identifiers are authoritative. Country-specific Web/Baileys
+  // heuristics would split the human-pause key from the next inbound message.
+  private cloudPhoneJid(phone: string): string {
+    if (typeof phone !== 'string' || !/^\+?\d{5,15}$/.test(phone)) {
+      throw new Error('Cloud API phone identity unsupported');
+    }
+    return `${phone.replace(/^\+/, '')}@s.whatsapp.net`;
+  }
+
+  private async handleBusinessAppEcho(content: any, echo: any) {
+    if (typeof echo?.id !== 'string' || !echo.id || !content.metadata?.phone_number_id) {
+      throw new Error('Business app echo identity missing');
+    }
+    // BSUID is not a phone number. This valid Meta variant requires a separate
+    // identity implementation; never strip its digits into a fabricated JID.
+    if (!echo.to && echo.to_user_id) throw new Error('BSUID-only business app echo identity unsupported');
+    if (typeof echo.to !== 'string' || !/^\+?\d{5,15}$/.test(echo.to)) {
+      throw new Error('Business app echo phone identity unsupported');
+    }
+    const timestamp = Number(echo.timestamp);
+    if (!Number.isSafeInteger(timestamp) || timestamp <= 0) throw new Error('Business app echo timestamp missing');
+    const id = 'meta_echo_' + createHash('sha256').update(`${this.instanceId}\0${echo.id}`).digest('hex');
+    this.businessAppEchoes ??= new Map();
+    const pending = this.businessAppEchoes.get(id);
+    if (pending) {
+      await pending;
+      return this.deliverBusinessAppEcho(id, content, echo, timestamp);
+    }
+    const delivery = this.deliverBusinessAppEcho(id, content, echo, timestamp);
+    this.businessAppEchoes.set(id, delivery);
+    try {
+      await delivery;
+    } finally {
+      this.businessAppEchoes.delete(id);
+    }
+  }
+
+  private async deliverBusinessAppEcho(id: string, content: any, echo: any, timestamp: number) {
+    let stored = await this.prismaRepository.message.findUnique({ where: { id } });
+
+    // Preserve the exact documented E.164 digits; createJid's country-specific
+    // heuristics are not an identity resolver for Cloud API/BSUID recipients.
+    const remoteJid = this.cloudPhoneJid(echo.to);
+    const key = { id: echo.id, remoteJid, fromMe: true };
+    let message: any;
+    let messageType: string;
+    let unsupportedContent = false;
+    if (echo.type === 'text' && typeof echo.text?.body === 'string') {
+      message = { conversation: echo.text.body };
+      messageType = 'conversation';
+    } else if (['image', 'video', 'document', 'audio', 'sticker'].includes(echo.type) && echo[echo.type]?.id) {
+      messageType = `${echo.type}Message`;
+      message = { [messageType]: echo[echo.type] };
+    } else if (
+      echo.type === 'location' &&
+      Number.isFinite(echo.location?.latitude) &&
+      Number.isFinite(echo.location?.longitude)
+    ) {
+      messageType = 'locationMessage';
+      message = this.messageLocationJson({ messages: [echo] });
+    } else if (echo.type === 'reaction' && typeof echo.reaction?.message_id === 'string') {
+      messageType = 'reactionMessage';
+      message = this.messageReactionJson({ messages: [echo] });
+    } else if (
+      echo.type === 'contacts' &&
+      Array.isArray(echo.contacts) &&
+      echo.contacts.length &&
+      echo.contacts.every((contact: any) => typeof contact.name?.formatted_name === 'string')
+    ) {
+      messageType = 'conversation';
+      const contacts = echo.contacts.map((contact: any) => {
+        const lines = [contact.name.formatted_name];
+        for (const phone of contact.phones || []) lines.push(`Telefone: ${phone.phone || phone.wa_id || ''}`);
+        for (const email of contact.emails || []) lines.push(`E-mail: ${email.email || ''}`);
+        for (const url of contact.urls || []) lines.push(`Site: ${url.url || ''}`);
+        for (const address of contact.addresses || []) {
+          lines.push(
+            `Endereço: ${[address.street, address.city, address.state, address.zip, address.country]
+              .filter(Boolean)
+              .join(', ')}`,
+          );
+        }
+        if (contact.org) {
+          lines.push(
+            `Organização: ${[contact.org.company, contact.org.department, contact.org.title]
+              .filter(Boolean)
+              .join(', ')}`,
+          );
+        }
+        if (contact.birthday) lines.push(`Aniversário: ${contact.birthday}`);
+        return lines.join('\n');
+      });
+      message = { conversation: contacts.join('\n\n') };
+    } else if (echo.type === 'revoke' && echo.revoke?.original_message_id) {
+      messageType = 'conversation';
+      message = { conversation: '[Mensagem excluída no WhatsApp Business]' };
+    } else if (echo.type === 'edit' && echo.edit?.original_message_id && echo.edit?.message) {
+      const edited = echo.edit.message;
+      const text = edited.text?.body ?? edited[edited.type]?.caption;
+      if (typeof text === 'string') {
+        messageType = 'conversation';
+        message = { conversation: `[Editada no WhatsApp Business] ${text}` };
+      }
+    }
+    if (!message) {
+      // Valid, authenticated human activity still pauses the bot. Preserve all
+      // content before surfacing unsupported presentation; never acknowledge it.
+      unsupportedContent = true;
+      messageType = 'businessAppUnsupportedMessage';
+      message = { businessAppUnsupportedMessage: echo };
+    }
+    message = JSON.parse(JSON.stringify(message));
+    const raw: any = {
+      key,
+      message,
+      messageType,
+      messageTimestamp: timestamp,
+      source: 'unknown',
+      instanceId: this.instanceId,
+      contextInfo: {
+        origin: 'whatsapp_business_app',
+        phoneNumberId: content.metadata.phone_number_id,
+        recipientUserId: echo.to_user_id,
+        businessAppPayload:
+          unsupportedContent || ['location', 'contacts', 'reaction'].includes(echo.type) ? echo : undefined,
+        originalMessageId: echo.revoke?.original_message_id || echo.edit?.original_message_id,
+      },
+    };
+    // Prisma JSON cannot carry undefined; optional source fields are omitted.
+    raw.contextInfo = JSON.parse(JSON.stringify(raw.contextInfo));
+    if (!stored) {
+      try {
+        stored = await this.prismaRepository.message.create({
+          data: { id, ...raw, status: 'COEXISTENCE_ECHO_PENDING' },
+        });
+      } catch (error) {
+        if (error?.code !== 'P2002') throw error;
+        stored = await this.prismaRepository.message.findUnique({ where: { id } });
+        if (!stored) throw error;
+      }
+    }
+    // A stable id must not silently accept a different recipient/content.
+    const stableJson = (value: any): string =>
+      JSON.stringify(value, (_key, item) => {
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+          return Object.fromEntries(
+            Object.keys(item)
+              .sort()
+              .map((name) => [name, item[name]]),
+          );
+        }
+        return item;
+      });
+    const { coexistenceEchoDelivered, ...storedContext } = (stored.contextInfo || {}) as any;
+    if (
+      stableJson(stored.key) !== stableJson(key) ||
+      stableJson(stored.message) !== stableJson(message) ||
+      stored.messageTimestamp !== timestamp ||
+      stableJson(storedContext) !== stableJson(raw.contextInfo)
+    ) {
+      throw new Error('Business app echo identity collision');
+    }
+    if (
+      coexistenceEchoDelivered === true &&
+      stored.chatwootMessageId &&
+      stored.chatwootConversationId &&
+      stored.chatwootInboxId
+    )
+      return;
+    const config = this.configService.get<WaBusiness>('WA_BUSINESS');
+    if (!config.COEXISTENCE_PAUSE_URL || !config.COEXISTENCE_PAUSE_TOKEN) {
+      throw new Error('Business app echo verified pause endpoint is not configured');
+    }
+    if (!this.configService.get<Chatwoot>('CHATWOOT').ENABLED || !this.localChatwoot?.enabled) {
+      throw new Error('Business app echo Portal is not configured');
+    }
+    const instance = { instanceName: this.instance.name, instanceId: this.instanceId };
+    const conversationId = await this.chatwootService.prepareBusinessAppEcho(instance, raw);
+    const pause = await axios.post(
+      config.COEXISTENCE_PAUSE_URL,
+      {
+        instanceName: this.instance.name,
+        phoneNumberId: content.metadata.phone_number_id,
+        messageId: echo.id,
+        remoteJid,
+        timestamp,
+        conversationId,
+      },
+      { headers: { 'x-partenon-secret': config.COEXISTENCE_PAUSE_TOKEN }, timeout: 15000 },
+    );
+    const result = pause.data;
+    const superseded =
+      result?.paused === false && result?.ignored === true && result?.reason === 'superseded_by_resume';
+    if (result?.ok !== true || result?.verified !== true || (result.paused !== true && !superseded)) {
+      throw new Error('Business app echo pause was not verified');
+    }
+    if (!superseded) {
+      await this.prismaRepository.integrationSession.updateMany({
+        where: { instanceId: this.instanceId, remoteJid, status: 'opened' },
+        data: { status: 'paused' },
+      });
+    }
+    if (unsupportedContent)
+      throw new Error('Business app echo content unsupported; payload retained and human pause verified');
+    const mirrored = await this.chatwootService.mirrorBusinessAppEcho(instance, raw, conversationId);
+    if (!mirrored?.id || !mirrored?.conversation_id || !mirrored?.inbox_id) {
+      throw new Error('Business app echo Portal acknowledgment missing');
+    }
+    await this.prismaRepository.message.update({
+      where: { id },
+      data: {
+        chatwootMessageId: mirrored.id,
+        chatwootConversationId: mirrored.conversation_id,
+        chatwootInboxId: mirrored.inbox_id,
+        status: 'COEXISTENCE_ECHO_DONE',
+        contextInfo: { ...raw.contextInfo, coexistenceEchoDelivered: true },
+      },
+    });
+  }
+
+  private async downloadMediaMessage(message: any, strictBusinessAppMedia = false) {
     try {
       const id = message[message.type].id;
       let urlServer = this.configService.get<WaBusiness>('WA_BUSINESS').URL;
@@ -159,6 +431,7 @@ export class BusinessStartupService extends ChannelStartupService {
 
       return result.data;
     } catch (e) {
+      if (strictBusinessAppMedia) throw new Error('Business app media download failed');
       this.logger.error(`Error downloading media: ${e}`);
       throw e;
     }
@@ -385,17 +658,15 @@ export class BusinessStartupService extends ChannelStartupService {
   protected async messageHandle(received: any, database: Database, settings: any) {
     try {
       let messageRaw: any;
-      let pushName: any;
-
-      if (received.contacts) pushName = received.contacts[0].profile.name;
+      const pushName = received.contacts?.[0]?.profile?.name;
 
       if (received.messages) {
         const message = received.messages[0]; // Añadir esta línea para definir message
 
         const key = {
           id: message.id,
-          remoteJid: this.phoneNumber,
-          fromMe: message.from === received.metadata.phone_number_id,
+          remoteJid: this.cloudPhoneJid(message.from),
+          fromMe: message.from === received.metadata?.phone_number_id,
         };
 
         if (message.type === 'sticker') {
@@ -702,7 +973,7 @@ export class BusinessStartupService extends ChannelStartupService {
         });
 
         const contactRaw: any = {
-          remoteJid: received.contacts[0].profile.phone,
+          remoteJid: key.remoteJid,
           pushName,
           // profilePicUrl: '',
           instanceId: this.instanceId,
@@ -714,7 +985,7 @@ export class BusinessStartupService extends ChannelStartupService {
 
         if (contact) {
           const contactRaw: any = {
-            remoteJid: received.contacts[0].profile.phone,
+            remoteJid: key.remoteJid,
             pushName,
             // profilePicUrl: '',
             instanceId: this.instanceId,
@@ -731,7 +1002,7 @@ export class BusinessStartupService extends ChannelStartupService {
           }
 
           await this.prismaRepository.contact.updateMany({
-            where: { remoteJid: contact.remoteJid },
+            where: { instanceId: this.instanceId, remoteJid: contact.remoteJid },
             data: contactRaw,
           });
           return;
@@ -739,35 +1010,26 @@ export class BusinessStartupService extends ChannelStartupService {
 
         this.sendDataWebhook(Events.CONTACTS_UPSERT, contactRaw);
 
-        this.prismaRepository.contact.create({
+        await this.prismaRepository.contact.create({
           data: contactRaw,
         });
       }
       if (received.statuses) {
         for await (const item of received.statuses) {
+          const findMessage = await this.prismaRepository.message.findFirst({
+            where: { instanceId: this.instanceId, key: { path: ['id'], equals: item.id } },
+          });
+          if (!findMessage) continue;
+          const originalKey = findMessage.key as any;
+          const recipient = item.recipient_id;
           const key = {
             id: item.id,
-            remoteJid: this.phoneNumber,
-            fromMe: this.phoneNumber === received.metadata.phone_number_id,
+            remoteJid: recipient ? this.cloudPhoneJid(recipient) : originalKey?.remoteJid,
+            fromMe: originalKey?.fromMe ?? true,
           };
-          if (settings?.groups_ignore && key.remoteJid.includes('@g.us')) {
-            return;
-          }
+          if (!key.remoteJid) throw new Error('Meta status recipient identity unsupported');
+          if (settings?.groups_ignore && key.remoteJid.includes('@g.us')) continue;
           if (key.remoteJid !== 'status@broadcast' && !key?.remoteJid?.match(/(:\d+)/)) {
-            const findMessage = await this.prismaRepository.message.findFirst({
-              where: {
-                instanceId: this.instanceId,
-                key: {
-                  path: ['id'],
-                  equals: key.id,
-                },
-              },
-            });
-
-            if (!findMessage) {
-              return;
-            }
-
             if (item.message === null && item.status === undefined) {
               this.sendDataWebhook(Events.MESSAGES_DELETE, key);
 
@@ -793,9 +1055,10 @@ export class BusinessStartupService extends ChannelStartupService {
                 );
               }
 
-              return;
+              continue;
             }
 
+            if (typeof item.status !== 'string') throw new Error('Meta status type unsupported');
             const message: any = {
               messageId: findMessage.id,
               keyId: key.id,
@@ -819,7 +1082,8 @@ export class BusinessStartupService extends ChannelStartupService {
         }
       }
     } catch (error) {
-      this.logger.error(error);
+      this.logger.error('Meta message processing failed');
+      throw error;
     }
   }
 
@@ -893,48 +1157,60 @@ export class BusinessStartupService extends ChannelStartupService {
     return message;
   }
 
-  protected async eventHandler(content: any) {
-    try {
-      // Registro para depuración
-      this.logger.log('Contenido recibido en eventHandler:');
-      this.logger.log(JSON.stringify(content, null, 2));
+  protected async eventHandler(content: any, field?: string, messagingAccountId?: string) {
+    if (field === 'history' || field === 'smb_app_state_sync') {
+      await this.syncRuntime().capture(field, content, messagingAccountId);
+      return;
+    }
+    if (field === 'smb_message_echoes') {
+      for (const echo of content.message_echoes || []) await this.handleBusinessAppEcho(content, echo);
+      return;
+    }
+    for (const message of content.messages || []) {
+      if (!message?.from && message?.from_user_id) throw new Error('BSUID-only inbound identity unsupported');
+      if (!message?.from) throw new Error('Meta inbound phone identity missing');
+    }
+    // Preserve the legacy ordinary webhook acceptance boundary: a slow n8n/LLM
+    // must not hold Meta's request open. Echo and durable sync stay awaited.
+    void this.handleRegularMetaContent(content).catch(() =>
+      this.logger.error('Asynchronous Meta message processing failed'),
+    );
+  }
 
-      const database = this.configService.get<Database>('DATABASE');
-      const settings = await this.findSettings();
-
-      // Si hay mensajes, verificar primero el tipo
-      if (content.messages && content.messages.length > 0) {
-        const message = content.messages[0];
-        this.logger.log(`Tipo de mensaje recibido: ${message.type}`);
-
-        // Verificamos el tipo de mensaje antes de procesarlo
-        if (
-          message.type === 'text' ||
-          message.type === 'image' ||
-          message.type === 'video' ||
-          message.type === 'audio' ||
-          message.type === 'document' ||
-          message.type === 'sticker' ||
-          message.type === 'location' ||
-          message.type === 'contacts' ||
-          message.type === 'interactive' ||
-          message.type === 'button' ||
-          message.type === 'reaction'
-        ) {
-          // Procesar el mensaje normalmente
-          this.messageHandle(content, database, settings);
-        } else {
-          this.logger.warn(`Tipo de mensaje no reconocido: ${message.type}`);
-        }
-      } else if (content.statuses) {
-        // Procesar actualizaciones de estado
-        this.messageHandle(content, database, settings);
+  private async handleRegularMetaContent(content: any) {
+    const database = this.configService.get<Database>('DATABASE');
+    const settings = await this.findSettings();
+    for (const message of content.messages || []) {
+      if (!message?.from && message?.from_user_id) throw new Error('BSUID-only inbound identity unsupported');
+      if (!message?.from) throw new Error('Meta inbound phone identity missing');
+      const supported = [
+        'text',
+        'image',
+        'video',
+        'audio',
+        'document',
+        'sticker',
+        'location',
+        'contacts',
+        'interactive',
+        'button',
+        'reaction',
+      ];
+      if (supported.includes(message.type)) {
+        const contact = content.contacts?.find(
+          (item: any) => item.wa_id === message.from || (message.from_user_id && item.user_id === message.from_user_id),
+        );
+        await this.messageHandle(
+          { ...content, messages: [message], statuses: undefined, contacts: contact ? [contact] : [] },
+          database,
+          settings,
+        );
       } else {
-        this.logger.warn('No se encontraron mensajes ni estados en el contenido recibido');
+        this.logger.warn('Unsupported Meta inbound message type');
       }
-    } catch (error) {
-      this.logger.error('Error en eventHandler:');
-      this.logger.error(error);
+    }
+    if (content.statuses?.length) {
+      await this.messageHandle({ ...content, messages: undefined }, database, settings);
     }
   }
 
@@ -1611,14 +1887,14 @@ export class BusinessStartupService extends ChannelStartupService {
     });
   }
 
-  public async getBase64FromMediaMessage(data: any) {
+  public async getBase64FromMediaMessage(data: any, strictBusinessAppMedia = false) {
     try {
       const msg = data.message;
       const messageType = msg.messageType.includes('Message') ? msg.messageType : msg.messageType + 'Message';
       const mediaMessage = msg.message[messageType];
 
       if (!msg.message?.base64) {
-        const buffer = await this.downloadMediaMessage({ type: messageType, ...msg.message });
+        const buffer = await this.downloadMediaMessage({ type: messageType, ...msg.message }, strictBusinessAppMedia);
         msg.message.base64 = buffer.toString('base64');
       }
 
@@ -1635,6 +1911,10 @@ export class BusinessStartupService extends ChannelStartupService {
         base64: msg.message.base64,
       };
     } catch (error) {
+      if (strictBusinessAppMedia) {
+        this.logger.error('Business app media processing failed');
+        throw new BadRequestException('Business app media processing failed');
+      }
       this.logger.error(error);
       throw new BadRequestException(error.toString());
     }

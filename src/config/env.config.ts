@@ -196,6 +196,15 @@ export type Websocket = {
 };
 
 export type WaBusiness = {
+  WEBHOOK_RATE_WINDOW_MS?: number;
+  WEBHOOK_RATE_LIMIT?: number;
+  APP_SECRET?: string;
+  ALLOW_UNSIGNED_LEGACY?: boolean;
+  COEXISTENCE_SYNC_BINDINGS?: string;
+  COEXISTENCE_SYNC_CALLBACK_URL?: string;
+  COEXISTENCE_SYNC_PORTAL_URL?: string;
+  COEXISTENCE_PAUSE_URL?: string;
+  COEXISTENCE_PAUSE_TOKEN?: string;
   TOKEN_WEBHOOK: string;
   URL: string;
   VERSION: string;
@@ -742,6 +751,15 @@ export class ConfigService {
         },
       },
       WA_BUSINESS: {
+        WEBHOOK_RATE_WINDOW_MS: Number.parseInt(process.env.WA_BUSINESS_WEBHOOK_RATE_WINDOW_MS, 10) || 60000,
+        WEBHOOK_RATE_LIMIT: Number.parseInt(process.env.WA_BUSINESS_WEBHOOK_RATE_LIMIT, 10) || 12000,
+        APP_SECRET: process.env.WA_BUSINESS_APP_SECRET || '',
+        ALLOW_UNSIGNED_LEGACY: process.env.WA_BUSINESS_ALLOW_UNSIGNED_LEGACY !== 'false',
+        COEXISTENCE_SYNC_BINDINGS: process.env.WA_BUSINESS_COEXISTENCE_SYNC_BINDINGS || '{}',
+        COEXISTENCE_SYNC_CALLBACK_URL: process.env.WA_BUSINESS_COEXISTENCE_SYNC_CALLBACK_URL || '',
+        COEXISTENCE_SYNC_PORTAL_URL: process.env.WA_BUSINESS_COEXISTENCE_SYNC_PORTAL_URL || '',
+        COEXISTENCE_PAUSE_URL: process.env.WA_BUSINESS_COEXISTENCE_PAUSE_URL || '',
+        COEXISTENCE_PAUSE_TOKEN: process.env.WA_BUSINESS_COEXISTENCE_PAUSE_TOKEN || '',
         TOKEN_WEBHOOK: process.env.WA_BUSINESS_TOKEN_WEBHOOK || 'evolution',
         URL: process.env.WA_BUSINESS_URL || 'https://graph.facebook.com',
         VERSION: process.env.WA_BUSINESS_VERSION || 'v18.0',

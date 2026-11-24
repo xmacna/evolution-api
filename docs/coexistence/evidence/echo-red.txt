@@ -1,0 +1,276 @@
+✖ empty/unknown changes and absent arrays do not dereference statuses[0] (126.482716ms)
+✖ official echo: durable fromMe, verified human pause and Portal, no bot/inbound/contact side effects (11.764984ms)
+✖ awaits failure, retries pending Portal delivery, and suppresses completed duplicates (12.094995ms)
+✖ same stable message id remains isolated across instances (29.270949ms)
+✖ concurrent deliveries share work until acknowledgment (18.528787ms)
+✖ pause failures, missing configuration and unverified response cannot be acknowledged (12.639577ms)
+✖ a verified superseding resume is accepted without repausing native sessions (11.501708ms)
+✖ BSUID-only is a valid unsupported identity: explicit failure without a fake JID or success (15.307252ms)
+✖ foreign phone binding is rejected and malformed batch is guarded (11.791578ms)
+✖ all echoes/entries/changes processed, preserving official inbound and status control behavior (12.592542ms)
+✖ unknown status message does not swallow subsequent delivered status (18.519234ms)
+✖ persistence failure propagates and never acknowledges partial echo (13.838198ms)
+✖ real Portal echo adapter uses outgoing + WAID guard and reconciles duplicates before POST (29.77518ms)
+✖ Portal adapter requires reconciliation support and positive acknowledgment (14.407478ms)
+✖ MetaController awaits and routes each change only to its bound instance (6.930862ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 0
+ℹ fail 15
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 537.627452
+
+✖ failing tests:
+
+test at test/xmacna-meta-coexistence.test.cjs:103:1
+✖ empty/unknown changes and absent arrays do not dereference statuses[0] (126.482716ms)
+  Error: TypeError: Cannot read properties of undefined (reading '0')
+      at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:106:21)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+
+test at test/xmacna-meta-coexistence.test.cjs:111:1
+✖ official echo: durable fromMe, verified human pause and Portal, no bot/inbound/contact side effects (11.764984ms)
+  Error: TypeError: Cannot read properties of undefined (reading '0')
+      at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:112:40)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at test/xmacna-meta-coexistence.test.cjs:127:1
+✖ awaits failure, retries pending Portal delivery, and suppresses completed duplicates (12.094995ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /portal unavailable/. Input:
+
+  "Error: TypeError: Cannot read properties of undefined (reading '0')"
+
+      at async TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:129:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: TypeError: Cannot read properties of undefined (reading '0')
+        at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+        at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:129:34)
+        at Test.runInAsyncScope (node:async_hooks:226:14)
+        at Test.run (node:internal/test_runner/test:1402:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+        at Test.postRun (node:internal/test_runner/test:1542:19)
+        at Test.run (node:internal/test_runner/test:1467:12)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    expected: /portal unavailable/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/xmacna-meta-coexistence.test.cjs:138:1
+✖ same stable message id remains isolated across instances (29.270949ms)
+  Error: TypeError: Cannot read properties of undefined (reading '0')
+      at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:140:19)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at test/xmacna-meta-coexistence.test.cjs:144:1
+✖ concurrent deliveries share work until acknowledgment (18.528787ms)
+  Error: TypeError: Cannot read properties of undefined (reading '0')
+      at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:145:53)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at test/xmacna-meta-coexistence.test.cjs:149:1
+✖ pause failures, missing configuration and unverified response cannot be acknowledged (12.639577ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /pause|Pause/. Input:
+
+  "Error: TypeError: Cannot read properties of undefined (reading '0')"
+
+      at async TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:152:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: TypeError: Cannot read properties of undefined (reading '0')
+        at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+        at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:152:36)
+        at Test.runInAsyncScope (node:async_hooks:226:14)
+        at Test.run (node:internal/test_runner/test:1402:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+        at Test.postRun (node:internal/test_runner/test:1542:19)
+        at Test.run (node:internal/test_runner/test:1467:12)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    expected: /pause|Pause/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/xmacna-meta-coexistence.test.cjs:157:1
+✖ a verified superseding resume is accepted without repausing native sessions (11.501708ms)
+  Error: TypeError: Cannot read properties of undefined (reading '0')
+      at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:159:19)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at test/xmacna-meta-coexistence.test.cjs:163:1
+✖ BSUID-only is a valid unsupported identity: explicit failure without a fake JID or success (15.307252ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /BSUID.*unsupported|unsupported.*BSUID/i. Input:
+
+  "Error: TypeError: Cannot read properties of undefined (reading '0')"
+
+      at async TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:166:24)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: TypeError: Cannot read properties of undefined (reading '0')
+        at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+        at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:166:55)
+        at Test.runInAsyncScope (node:async_hooks:226:14)
+        at Test.run (node:internal/test_runner/test:1402:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+        at Test.postRun (node:internal/test_runner/test:1542:19)
+        at Test.run (node:internal/test_runner/test:1467:12)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    expected: /BSUID.*unsupported|unsupported.*BSUID/i,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/xmacna-meta-coexistence.test.cjs:170:1
+✖ foreign phone binding is rejected and malformed batch is guarded (11.791578ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /phone.*mismatch|another instance/i. Input:
+
+  "Error: TypeError: Cannot read properties of undefined (reading '0')"
+
+      at async TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:172:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: TypeError: Cannot read properties of undefined (reading '0')
+        at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+        at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:172:34)
+        at Test.runInAsyncScope (node:async_hooks:226:14)
+        at Test.run (node:internal/test_runner/test:1402:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+        at Test.postRun (node:internal/test_runner/test:1542:19)
+        at Test.run (node:internal/test_runner/test:1467:12)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    expected: /phone.*mismatch|another instance/i,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/xmacna-meta-coexistence.test.cjs:177:1
+✖ all echoes/entries/changes processed, preserving official inbound and status control behavior (12.592542ms)
+  Error: TypeError: Cannot read properties of undefined (reading '0')
+      at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:183:19)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at test/xmacna-meta-coexistence.test.cjs:189:1
+✖ unknown status message does not swallow subsequent delivered status (18.519234ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:193:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/xmacna-meta-coexistence.test.cjs:197:1
+✖ persistence failure propagates and never acknowledges partial echo (13.838198ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /persist unavailable/. Input:
+
+  "Error: TypeError: Cannot read properties of undefined (reading '0')"
+
+      at async TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:198:46)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: TypeError: Cannot read properties of undefined (reading '0')
+        at BusinessStartupService.connectToWhatsapp (/dev/shm/evolution-meta-coexistence-20261124/src/api/integrations/channel/meta/whatsapp.business.service.ts:130:13)
+        at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:198:77)
+        at Test.runInAsyncScope (node:async_hooks:226:14)
+        at Test.run (node:internal/test_runner/test:1402:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+        at Test.postRun (node:internal/test_runner/test:1542:19)
+        at Test.run (node:internal/test_runner/test:1467:12)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    expected: /persist unavailable/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/xmacna-meta-coexistence.test.cjs:224:1
+✖ real Portal echo adapter uses outgoing + WAID guard and reconciles duplicates before POST (29.77518ms)
+  TypeError [Error]: h.portal.mirrorBusinessAppEcho is not a function
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:226:18)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at test/xmacna-meta-coexistence.test.cjs:234:1
+✖ Portal adapter requires reconciliation support and positive acknowledgment (14.407478ms)
+  TypeError [Error]: h.portal.mirrorBusinessAppEcho is not a function
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:236:33)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at test/xmacna-meta-coexistence.test.cjs:241:1
+✖ MetaController awaits and routes each change only to its bound instance (6.930862ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  1 !== 2
+
+      at TestContext.<anonymous> (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-coexistence.test.cjs:248:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

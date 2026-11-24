@@ -1,0 +1,25 @@
+✖ real runtime text projection reuses its transaction client with pool max1 (344.365329ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 466.48089
+
+✖ failing tests:
+
+test at test/xmacna-meta-history.postgres.test.cjs:293:1
+✖ real runtime text projection reuses its transaction client with pool max1 (344.365329ms)
+  Error: timeout exceeded when trying to connect
+      at $READONLY_PG_DONOR/pg-pool/index.js:45:11
+      at async BusinessAppSyncRuntime.destination (evalmachine.<anonymous>:104:21)
+      at async BusinessAppSyncRuntime.fencedDestination (evalmachine.<anonymous>:131:25)
+      at async evalmachine.<anonymous>:298:9
+      at async importBusinessAppHistoryMessage (evalmachine.<anonymous>:73:5)
+      at async BusinessAppSyncRuntime.project (evalmachine.<anonymous>:285:20)
+      at async $CHECKOUT/test/xmacna-meta-history.postgres.test.cjs:300:5
+      at async isolated ($CHECKOUT/test/xmacna-meta-history.postgres.test.cjs:54:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)

@@ -1,0 +1,57 @@
+
+> evolution-api@2.3.7 test:xmacna-meta-coexistence
+> node --test test/xmacna-meta-coexistence.test.cjs
+
+✔ empty/unknown changes and absent arrays do not dereference statuses[0] (107.231607ms)
+✔ official echo: durable fromMe, verified human pause and Portal, no bot/inbound/contact side effects (17.652111ms)
+✔ awaits failure, retries pending Portal delivery, and suppresses completed duplicates (16.708657ms)
+✔ same stable message id remains isolated across instances (33.219009ms)
+✔ concurrent deliveries share work until acknowledgment (15.698748ms)
+✔ pause failures, missing configuration and unverified response cannot be acknowledged (42.576953ms)
+✔ a verified superseding resume is accepted without repausing native sessions (13.544768ms)
+✔ BSUID-only is a valid unsupported identity: explicit failure without a fake JID or success (13.955994ms)
+✔ foreign phone binding is rejected and malformed batch is guarded (12.98741ms)
+✔ all echoes/entries/changes processed, preserving official inbound and status control behavior (16.513778ms)
+✔ unknown status message does not swallow subsequent delivered status (28.980988ms)
+✔ persistence failure propagates and never acknowledges partial echo (12.910478ms)
+✔ real Portal echo adapter uses outgoing + WAID guard and reconciles duplicates before POST (15.587092ms)
+✔ Portal adapter requires reconciliation support and positive acknowledgment (32.587787ms)
+✔ MetaController awaits and routes each change only to its bound instance (4.91823ms)
+✔ retry after Portal success and final DB failure reconciles the accepted source id (38.188938ms)
+✔ durable duplicate collision fails even after completion, and JSONB key order is irrelevant (15.48774ms)
+✔ official media shape is persisted as outgoing without inbound lead/bot creation (69.748672ms)
+✔ revoke/edit are explicit thread notices preserving original id, no replay to WhatsApp/bot (28.762936ms)
+✔ missing Portal configuration never records a completed echo even with no native session (12.536263ms)
+✔ real Portal media adapter posts attachment with WAID/outgoing, deduplicates after retry (14.659868ms)
+✔ real Portal receiveWebhook WAID guard does not echo the reflected message back to WhatsApp (15.259353ms)
+✔ real native bot process ignores the next inbound when echo paused its existing session (20.311231ms)
+✔ transport status changes cannot reopen a completed echo or repeat the human pause (15.963605ms)
+✔ every Portal acknowledgment path resolves inbox/conversation, including ambiguous accepted POST (32.550098ms)
+✔ real Business media downloader reads media through GET only and keeps the app echo outgoing (28.531674ms)
+✔ actual Meta route authenticates raw-byte signatures before any coexistence effect (162.709149ms)
+✔ raw capture keeps exact bytes solely for Meta, including query and trailing slash (2.817217ms)
+✔ legacy unsigned traffic is explicit compatibility only; configured secret validates all POSTs (67.218159ms)
+✔ history media follow-ups and state sync cannot enter live inbound before durable sync is implemented (25.641334ms)
+✔ Cloud PN identity is exact and consistent across echo pause, next inbound, contacts and statuses (BR/MX/AR) (51.808163ms)
+✔ actual Meta route rate-limits before HMAC/side effects with Retry-After and recovers after the window (23.675624ms)
+✔ official-derived location, shared contacts and reaction echoes pause and mirror without live inbound (42.398605ms)
+✔ unknown signed app content is durably retained and verified human pause happens before mirror failure (16.204994ms)
+✔ actual Portal echo adapter renders location and reaction as outgoing notices, never media or WhatsApp sends (26.748336ms)
+✔ reaction removal without emoji is displayed faithfully and shared contacts include optional non-phone data (47.548457ms)
+✔ Portal reconciliation converts actual pg bigint string acknowledgments into Prisma Int IDs (15.810937ms)
+✔ Portal acknowledgments reject nonnumeric, fractional and overflow IDs without a successful mirror (85.96529ms)
+✔ echo retries reuse the reconciled display thread before creating a new conversation (16.372279ms)
+✔ echo mirror keeps an instance provider snapshot across another instance changing the shared service (16.697851ms)
+✔ ordinary Cloud inbound acknowledgment does not wait for a pending chatbot/LLM (22.056716ms)
+✔ ordinary detached chatbot failures are caught without unhandled rejection or waiting on the receipt (14.758073ms)
+✔ a strict failure in a mixed Meta batch does not launch ordinary inbound work before retry (4.419836ms)
+✔ strict app media failures never log or return Axios headers, URLs or secret values (15.265943ms)
+✔ signed real Meta route acknowledges history only after durable capture; missing/wrong account and bad signature cannot capture (163.984822ms)
+ℹ tests 45
+ℹ suites 0
+ℹ pass 45
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1622.330718
