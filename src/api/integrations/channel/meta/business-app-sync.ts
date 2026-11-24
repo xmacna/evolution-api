@@ -415,8 +415,23 @@ export class BusinessAppSync {
         });
       if (!current || !(await ownsLease())) return;
       let cursor = current.cursor;
-      const blocked = Array.isArray(current.blocked) ? [...current.blocked] : [];
+      const blocked: { cursor: number; reason: string }[] = [];
       try {
+        if (current.blocked !== null && !Array.isArray(current.blocked))
+          throw new Error('Historical quarantine state invalid');
+        for (const item of current.blocked || []) {
+          if (
+            !item ||
+            typeof item !== 'object' ||
+            Array.isArray(item) ||
+            typeof item.cursor !== 'number' ||
+            !Number.isSafeInteger(item.cursor) ||
+            item.cursor < 0 ||
+            typeof item.reason !== 'string'
+          )
+            throw new Error('Historical quarantine state invalid');
+          blocked.push({ cursor: item.cursor, reason: item.reason });
+        }
         const units = this.units(current.payload);
         let processed = 0;
         while (cursor < units.length && processed++ < maxUnits) {
