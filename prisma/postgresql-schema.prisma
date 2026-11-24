@@ -77,6 +77,9 @@ model Instance {
   disconnectionAt         DateTime?                @db.Timestamp
   createdAt               DateTime?                @default(now()) @db.Timestamp
   updatedAt               DateTime?                @updatedAt @db.Timestamp
+  BusinessAppSyncRun   BusinessAppSyncRun?
+  BusinessAppSyncChunk BusinessAppSyncChunk[]
+  BusinessAppContact  BusinessAppContact[]
   Chat                    Chat[]
   Contact                 Contact[]
   Message                 Message[]
@@ -806,4 +809,78 @@ model EvoaiSetting {
   evoaiIdFallback String?   @db.VarChar(100)
   Instance        Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   instanceId      String    @unique
+}
+
+
+// Coexistence capture is separate from live inbound receipts and chatbot state.
+model BusinessAppSyncRun {
+  id                 String   @id @db.VarChar(96)
+  instanceId         String   @unique
+  Instance           Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  generation         String   @db.VarChar(64)
+  phoneNumberId      String   @db.VarChar(100)
+  messagingAccountId String   @db.VarChar(100)
+  portalAccountId Int
+  portalInboxId   Int
+  portalBaseUrl   String @db.VarChar(2048)
+  onboardedAt        DateTime @db.Timestamp(3)
+  deadline           DateTime @db.Timestamp(3)
+  contactsRequestId  String?  @db.VarChar(255)
+  historyRequestId   String?  @db.VarChar(255)
+  sourceProgress     Int      @default(0) @db.Integer
+  historyConsent     String   @default("unknown") @db.VarChar(32)
+  sourceErrorCode    String?  @db.VarChar(64)
+  createdAt          DateTime @default(now()) @db.Timestamp(3)
+  updatedAt          DateTime @updatedAt @db.Timestamp(3)
+  chunks             BusinessAppSyncChunk[]
+
+  @@unique([id, instanceId])
+}
+
+model BusinessAppSyncChunk {
+  id              String   @id @db.VarChar(96)
+  runId           String   @db.VarChar(96)
+  Run             BusinessAppSyncRun @relation(fields: [runId, instanceId], references: [id, instanceId], onDelete: Cascade)
+  instanceId      String
+  Instance        Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  field           String   @db.VarChar(32)
+  payloadHash     String   @db.Char(64)
+  payload         Json     @db.JsonB
+  state           String   @default("pending") @db.VarChar(20)
+  cursor          Int      @default(0) @db.Integer
+  attempts        Int      @default(0) @db.Integer
+  duplicateCount  Int      @default(0) @db.Integer
+  leaseOwner      String?  @db.VarChar(64)
+  leaseVersion    Int      @default(0) @db.Integer
+  leaseExpiresAt  DateTime? @db.Timestamp(3)
+  nextAttemptAt   DateTime @default(now()) @db.Timestamp(3)
+  late            Boolean  @default(false)
+  blocked         Json?    @db.JsonB
+  lastErrorCode   String?  @db.VarChar(64)
+  createdAt       DateTime @default(now()) @db.Timestamp(3)
+  updatedAt       DateTime @updatedAt @db.Timestamp(3)
+
+  @@unique([runId, field, payloadHash])
+  @@index([instanceId, state, nextAttemptAt])
+  @@index([runId])
+}
+
+// BSUID is an opaque business-scoped identity, never converted to a phone/JID.
+model BusinessAppContact {
+  id              String   @id @db.VarChar(96)
+  instanceId      String
+  Instance        Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  identityKey     String   @db.VarChar(128)
+  userId          String?  @db.VarChar(100)
+  phoneNumber     String?  @db.VarChar(32)
+  remoteJid       String?  @db.VarChar(100)
+  fullName        String?  @db.VarChar(255)
+  action          String   @db.VarChar(20)
+  sourceTimestamp Int      @db.Integer
+  payload         Json     @db.JsonB
+  createdAt       DateTime @default(now()) @db.Timestamp(3)
+  updatedAt       DateTime @updatedAt @db.Timestamp(3)
+
+  @@unique([instanceId, identityKey])
+  @@index([instanceId])
 }

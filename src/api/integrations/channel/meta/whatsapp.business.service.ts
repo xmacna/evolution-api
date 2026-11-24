@@ -33,6 +33,9 @@ import FormData from 'form-data';
 import mimeTypes from 'mime-types';
 import { join } from 'path';
 
+import { BusinessAppSyncRegistration } from './business-app-sync';
+import { BusinessAppSyncRuntime } from './business-app-sync-runtime';
+
 export class BusinessStartupService extends ChannelStartupService {
   constructor(
     public readonly configService: ConfigService,
@@ -56,6 +59,8 @@ export class BusinessStartupService extends ChannelStartupService {
   }
 
   public async closeClient() {
+    this.businessAppSyncRuntime?.close();
+    this.businessAppSyncRuntime = undefined;
     this.stateConnection = { state: 'close' };
   }
 
@@ -128,8 +133,36 @@ export class BusinessStartupService extends ChannelStartupService {
   // not this map, are the durable acknowledgment across retries/restarts.
   private businessAppEchoes = new Map<string, Promise<void>>();
 
+  private businessAppSyncRuntime?: BusinessAppSyncRuntime;
+  private businessAppSyncNumber?: string;
+
+  private syncRuntime() {
+    if (!this.businessAppSyncRuntime || this.businessAppSyncNumber !== this.number) {
+      this.businessAppSyncRuntime?.close();
+      this.businessAppSyncNumber = this.number;
+      this.businessAppSyncRuntime = new BusinessAppSyncRuntime(
+        this.prismaRepository,
+        this.configService,
+        { instanceId: this.instanceId, instanceName: this.instanceName, number: this.number },
+        (message) => this.getBase64FromMediaMessage(message, true),
+        () => this.logger.error('Business app sync background projection failed'),
+      );
+    }
+    return this.businessAppSyncRuntime.sync;
+  }
+
+  public async coexistenceSyncStatus() {
+    return this.syncRuntime().status();
+  }
+  public async coexistenceSyncStart(data: BusinessAppSyncRegistration) {
+    return this.syncRuntime().start(data);
+  }
+
   public async connectToWhatsapp(data?: any): Promise<any> {
-    if (!data) return;
+    if (!data) {
+      this.syncRuntime();
+      return;
+    }
 
     try {
       await this.loadChatwoot();
@@ -141,12 +174,20 @@ export class BusinessStartupService extends ChannelStartupService {
           if (numberId && this.number && numberId !== this.number) {
             throw new Error('Meta webhook phone binding mismatch: another instance');
           }
-          await this.eventHandler(content, change.field);
+          await this.eventHandler(content, change.field, entry.id);
         }
       }
     } catch (error) {
       // Do not log payloads or HTTP errors carrying authentication headers.
       this.logger.error('Meta webhook processing failed');
+      const durableSync =
+        Array.isArray(data?.entry) &&
+        data.entry.some(
+          (entry: any) =>
+            Array.isArray(entry.changes) &&
+            entry.changes.some((change: any) => ['history', 'smb_app_state_sync'].includes(change?.field)),
+        );
+      if (durableSync) throw new InternalServerErrorException('Business app durable sync ingest failed');
       throw new InternalServerErrorException(error?.message || 'Meta webhook processing failed');
     }
   }
@@ -1116,9 +1157,10 @@ export class BusinessStartupService extends ChannelStartupService {
     return message;
   }
 
-  protected async eventHandler(content: any, field?: string) {
+  protected async eventHandler(content: any, field?: string, messagingAccountId?: string) {
     if (field === 'history' || field === 'smb_app_state_sync') {
-      throw new Error('Business app durable sync ingest unavailable');
+      await this.syncRuntime().capture(field, content, messagingAccountId);
+      return;
     }
     if (field === 'smb_message_echoes') {
       for (const echo of content.message_echoes || []) await this.handleBusinessAppEcho(content, echo);

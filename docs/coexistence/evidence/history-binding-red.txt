@@ -1,0 +1,57 @@
+✔ readiness reports actual binding and receiver fields but no import completion (63.287205ms)
+✔ registration is idempotent, conserves its original deadline and binds request metadata once (6.979308ms)
+✔ capture persists an immutable payload before processing; restart resumes it, duplicate capture stays one chunk (9.020593ms)
+✔ capture errors cannot be acknowledged and foreign tenants cannot share captured work (5.939114ms)
+✔ source progress100 and phase2 are distinct from local processing and contact source completion (12.822067ms)
+✔ lease expiry reclaims persisted cursor after a crash and concurrent drain claims only once (6.057639ms)
+✔ projection failure remains retryable with the same durable payload across restart (6.849311ms)
+✔ unsupported identity is explicit quarantined work, preserving raw data without fake phones (5.553098ms)
+✔ late payload is captured after deadline and remains visible for local completion (5.79786ms)
+✔ history consent error and media follow-up retain the official shapes without live message dispatch (5.649506ms)
+✔ an expired worker cannot advance cursor or finish after its projection await (5.858002ms)
+✖ rebinding an instance cannot advertise or capture into a stale account/phone generation (10.409947ms)
+✖ a receiver rebound to another account cannot drain the earlier run (11.179724ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 11
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 265.059243
+
+✖ failing tests:
+
+test at test/xmacna-meta-sync.test.cjs:185:1
+✖ rebinding an instance cannot advertise or capture into a stale account/phone generation (10.409947ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> ($CHECKOUT/test/xmacna-meta-sync.test.cjs:189:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/xmacna-meta-sync.test.cjs:195:1
+✖ a receiver rebound to another account cannot drain the earlier run (11.179724ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  1 !== 0
+
+      at TestContext.<anonymous> ($CHECKOUT/test/xmacna-meta-sync.test.cjs:198:35)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

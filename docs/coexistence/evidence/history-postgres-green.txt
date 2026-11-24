@@ -1,0 +1,22 @@
+✔ real PostgreSQL history import is idempotent under concurrency without API/Rails callbacks (162.273369ms)
+✔ historical data preserves existing live conversation state and late media updates one placeholder (67.996392ms)
+✔ new sync migration enforces per-instance generation, chunk identity and tenant foreign keys (68.873947ms)
+✔ real echo source reconciliation distinguishes internal/display IDs and equal display IDs in other accounts (79.260223ms)
+✔ manual index readiness fails closed for absent, nonunique and divergent predicates; preflight returns only counts (75.507246ms)
+✔ outgoing sender preserves User or AgentBot actor, unknown actor fails before persistence (63.999271ms)
+✔ API-like writer without advisory lock wins race; unique violation reconciles scoped display IDs (69.764309ms)
+✔ native ActiveStorage bytes attach to historical message, PUT failure keeps placeholder and retry does not duplicate attachments (87.680363ms)
+✔ media checksum mismatch and unsafe storage URL fail without attaching or exposing tokens (68.009918ms)
+✔ contact sync preserves remove tombstone and ignores older add without deleting history (57.794598ms)
+﹣ actual Prisma core survives client/process-state replacement and checkpoints cursor on isolated PostgreSQL (0.203102ms) # SKIP
+✔ real runtime text projection reuses its transaction client with pool max1 (106.709903ms)
+✔ concurrent contact processors cannot project an older name after the newer remove stamp (60.36259ms)
+✔ remove of nonexistent contact supersedes a processor that already read the older add ledger (84.143789ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 1179.681111

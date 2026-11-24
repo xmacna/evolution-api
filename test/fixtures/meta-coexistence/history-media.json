@@ -1,0 +1,36 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "account-local-a",
+      "changes": [
+        {
+          "field": "history",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "phone_number_id": "phone-local-a",
+              "display_phone_number": "15550000001"
+            },
+            "message_echoes": [
+              {
+                "from": "15550000001",
+                "to": "15550000002",
+                "to_user_id": "US.SYNTHETIC.2",
+                "id": "wamid.SYNTHETIC.history.media",
+                "timestamp": "1795521602",
+                "type": "image",
+                "image": {
+                  "id": "media-synthetic",
+                  "caption": "Synthetic historical media",
+                  "mime_type": "image/png",
+                  "sha256": "b3cc0475bb78a5026098858e9889acf666d31062d513d303314eca31d36e72f2"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

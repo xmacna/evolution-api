@@ -1,0 +1,74 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "account-local-a",
+      "changes": [
+        {
+          "field": "history",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "phone_number_id": "phone-local-a",
+              "display_phone_number": "15550000001"
+            },
+            "history": [
+              {
+                "metadata": {
+                  "phase": 0,
+                  "chunk_order": 1,
+                  "progress": 55
+                },
+                "threads": [
+                  {
+                    "id": "15550000002",
+                    "context": {
+                      "wa_id": "15550000002",
+                      "user_id": "US.SYNTHETIC.2"
+                    },
+                    "messages": [
+                      {
+                        "from": "15550000001",
+                        "id": "wamid.SYNTHETIC.history.out",
+                        "timestamp": "1795521600",
+                        "type": "text",
+                        "text": {
+                          "body": "Synthetic historical outbound"
+                        },
+                        "history_context": {
+                          "status": "READ"
+                        }
+                      },
+                      {
+                        "from": "15550000002",
+                        "from_user_id": "US.SYNTHETIC.2",
+                        "id": "wamid.SYNTHETIC.history.in",
+                        "timestamp": "1795521601",
+                        "type": "text",
+                        "text": {
+                          "body": "Synthetic historical inbound"
+                        },
+                        "history_context": {
+                          "status": "DELIVERED"
+                        }
+                      },
+                      {
+                        "from": "15550000001",
+                        "id": "wamid.SYNTHETIC.history.media",
+                        "timestamp": "1795521602",
+                        "type": "media_placeholder",
+                        "history_context": {
+                          "status": "PLAYED"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -17,3 +17,13 @@ BR/MX/AR synthetic phone controls are local country-identity variants of the sam
 
 
 complex-content.json is synthetic content derived from the official location webhook reference, contacts-messages request syntax and reaction-messages request plus reaction webhook/removal examples, all opened/read 2026-11-24. Sources: https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/location ; https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/contacts-messages ; https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/reaction-messages ; https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/reaction . Public Accept:text/markdown fetches supplied the reaction examples after web-tool 429 responses. Location 0/0 and .invalid addresses/names/phone data are synthetic. Removing emoji derives from the documented removal variant; an explicitly unsupported future_local_type is a local resilience mutation rather than an official Meta type.
+
+`history.json` and `history-media.json`: derived on 2026-11-24 from the current
+[Meta history reference](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/history),
+including thread context, inbound/outbound `from`, delivery context, phases/chunks,
+media placeholder and subsequent `history`/`message_echoes` assets. All identities,
+text and timestamps replaced with synthetic values; SHA256 is for `synthetic`
+bytes. No production payload. `state-sync.json`: derived on the same date from
+[onboarding, Synchronizing WhatsApp Business App Data](https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users),
+contact add/remove, source timestamp and optional phone/opaque user identity.
+No legacy signup v3 example is used to infer current v5 readiness.

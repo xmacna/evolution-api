@@ -16,6 +16,7 @@ function load(relative, boundaries = {}) {
     require(name) {
       if (name in boundaries) return boundaries[name];
       if (['crypto', 'path', 'stream', 'util', 'node:crypto', 'express-rate-limit'].includes(name)) return require(name);
+      if (name === './business-app-sync-runtime') return { BusinessAppSyncRuntime: class { sync={async capture(){throw new Error('Business app durable sync ingest unavailable');}};close(){} } };
       if (name === '@api/types/wa.types') return { Events: events };
       if (name === '@api/services/channel.service') return { ChannelStartupService: class {
         get instanceId() { return this.instance.id; }
@@ -461,7 +462,7 @@ test('legacy unsigned traffic is explicit compatibility only; configured secret 
 test('history media follow-ups and state sync cannot enter live inbound before durable sync is implemented', async () => {
   for (const field of ['history', 'smb_app_state_sync']) {
     const h = harness(); const p = fixture('inbound-text'); p.entry[0].changes[0].field = field;
-    await assert.rejects(h.service.connectToWhatsapp(p), /durable.*ingest.*unavailable/i);
+    await assert.rejects(h.service.connectToWhatsapp(p), /durable.*ingest.*failed/i);
     assert.equal(h.records.size + h.calls.bots.length + h.calls.pause.length + h.calls.portal.length, 0);
   }
 });
@@ -655,4 +656,29 @@ test('strict app media failures never log or return Axios headers, URLs or secre
   });
   assert.ok(!JSON.stringify(logs).includes(secret)); assert.ok(!JSON.stringify(logs).includes('https://'));
   assert.ok(!JSON.stringify(logs).includes('Authorization'));
+});
+
+test('signed real Meta route acknowledges history only after durable capture; missing/wrong account and bad signature cannot capture', async()=>{
+  const {createHmac,createHash}=require('node:crypto');
+  const {memoryRepository}=require('./helpers/meta-sync-repository.cjs');
+  async function prepared(){
+    const h=signedRouterHarness(),repository=memoryRepository();
+    const {BusinessAppSync}=load('src/api/integrations/channel/meta/business-app-sync.ts');
+    const binding={instanceId:'instance-local-a',instanceName:'local-a',phoneNumberId:'phone-local-a',messagingAccountId:'account-local-a'};
+    const sync=new BusinessAppSync(repository,binding,{enabled:true,appSecretConfigured:true,callbackUrl:'https://evolve.local.invalid/webhook/meta',
+      clock:()=>Date.parse('2026-11-24T13:00:00Z'),destination:async()=>({portalAccountId:11,portalInboxId:22,portalBaseUrl:'https://portal.local.invalid'})},async()=>assert.fail('capture must not invoke projector'));
+    await sync.start({phoneNumberId:binding.phoneNumberId,messagingAccountId:binding.messagingAccountId,generation:createHash('sha256').update('account-local-a:phone-local-a').digest('hex'),onboardedAt:'2026-11-24T12:00:00Z'});
+    h.service.syncRuntime=()=>sync;
+    return {...h,repository};
+  }
+  const send=(h,body,valid=true)=>{const raw=Buffer.from(JSON.stringify(body));const signature='sha256='+createHmac('sha256','synthetic-app-secret').update(raw).digest('hex');return h.post(body,raw,valid?signature:undefined);};
+  const h=await prepared();let release;const gate=new Promise(resolve=>release=resolve);const create=h.repository.businessAppSyncChunk.create;
+  h.repository.businessAppSyncChunk.create=async(args)=>{await gate;return create(args);};
+  let acknowledged=false;const pending=send(h,fixture('history')).then(result=>{acknowledged=true;return result;});
+  await new Promise(setImmediate);assert.equal(acknowledged,false);release();assert.equal((await pending).code,200);assert.equal(h.repository.tables.chunk.size,1);
+  assert.equal(h.calls.bots.length+h.calls.pause.length+h.calls.portal.length,0);
+  for(const account of [undefined,'wrong-account']){const bad=await prepared();const p=fixture('history');p.entry[0].id=account;await assert.rejects(send(bad,p),/durable sync ingest failed/);assert.equal(bad.repository.tables.chunk.size,0);}
+  const failed=await prepared();failed.repository.businessAppSyncChunk.create=async()=>{throw new Error('raw synthetic payload and private-secret');};
+  await assert.rejects(send(failed,fixture('history')),error=>{assert.equal(error.message,'Business app durable sync ingest failed');assert.equal(error.message.includes('private-secret'),false);return true;});assert.equal(failed.repository.tables.chunk.size,0);
+  const unsigned=await prepared();assert.equal((await send(unsigned,fixture('history'),false)).code,403);assert.equal(unsigned.repository.tables.chunk.size,0);
 });

@@ -4,6 +4,8 @@ import {
   normalizeInstanceScope,
   transitionInboundMode,
 } from '@api/integrations/channel/whatsapp/inboundInbox';
+import { BusinessAppSyncRegistration } from '@api/integrations/channel/meta/business-app-sync';
+import { BusinessStartupService } from '@api/integrations/channel/meta/whatsapp.business.service';
 import { ChatwootService } from '@api/integrations/chatbot/chatwoot/services/chatwoot.service';
 import { ProviderFiles } from '@api/provider/sessions';
 import { PrismaRepository } from '@api/repository/repository.service';
@@ -38,6 +40,21 @@ export class InstanceController {
   ) {}
 
   private readonly logger = new Logger('InstanceController');
+
+  private businessAppInstance(instanceName: string): BusinessStartupService {
+    const instance = this.waMonitor.waInstances[instanceName];
+    if (!(instance instanceof BusinessStartupService))
+      throw new BadRequestException('Instance is not a Cloud API channel');
+    return instance;
+  }
+
+  public async coexistenceSyncStatus({ instanceName }: InstanceDto) {
+    return this.businessAppInstance(instanceName).coexistenceSyncStatus();
+  }
+
+  public async coexistenceSyncStart({ instanceName }: InstanceDto, data: BusinessAppSyncRegistration) {
+    return this.businessAppInstance(instanceName).coexistenceSyncStart(data);
+  }
 
   public async createInstance(instanceData: InstanceDto) {
     try {

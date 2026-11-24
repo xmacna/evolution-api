@@ -1,0 +1,45 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "account-local-a",
+      "changes": [
+        {
+          "field": "smb_app_state_sync",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "phone_number_id": "phone-local-a",
+              "display_phone_number": "15550000001"
+            },
+            "state_sync": [
+              {
+                "type": "contact",
+                "action": "add",
+                "contact": {
+                  "full_name": "Synthetic Contact",
+                  "first_name": "Synthetic",
+                  "phone_number": "15550000002",
+                  "user_id": "US.SYNTHETIC.2"
+                },
+                "metadata": {
+                  "timestamp": "1795521600"
+                }
+              },
+              {
+                "type": "contact",
+                "action": "remove",
+                "contact": {
+                  "user_id": "US.SYNTHETIC.OPAQUE"
+                },
+                "metadata": {
+                  "timestamp": "1795521601"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
