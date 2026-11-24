@@ -30,16 +30,16 @@ export async function attemptDurableInboundSink(options: {
   return undefined;
 }
 
-/** Keep legacy LID delivery in off/shadow; only an enforce receipt can retry it. */
+/**
+ * n8n first, then the best-effort bots. An unresolved LID is delivered in every inbox mode,
+ * enforce included (xmacna/elysium#1495): see `resolveDeliverableInboundAddress`.
+ */
 export async function dispatchInboundChatbot(options: {
-  unresolvedLid?: Error;
-  receiptMode?: 'off' | 'shadow' | 'enforce';
   attempt: (operation: () => Promise<'sent'>) => Promise<boolean>;
   durable: () => Promise<void>;
   bestEffort: () => Promise<void>;
 }): Promise<void> {
   const delivered = await options.attempt(async () => {
-    if (options.unresolvedLid && options.receiptMode === 'enforce') throw options.unresolvedLid;
     await options.durable();
     return 'sent';
   });

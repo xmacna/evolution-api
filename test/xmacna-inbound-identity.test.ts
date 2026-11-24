@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   LidPhoneAliasStore,
+  resolveDeliverableInboundAddress,
   resolveInboundAddress,
   UnresolvedInboundLidError,
 } from '../src/api/integrations/channel/whatsapp/inboundIdentity';
@@ -89,61 +90,60 @@ test('group addresses do not become a member phone through an alternate LID', as
   );
 });
 
-test('unknown LID reaches the bot with its original JID in off and shadow', async () => {
-  for (const receiptMode of [undefined, 'shadow'] as const) {
-    const aliases = new MemoryAliases();
+// xmacna/elysium#1495: Tacomaq #614/#617 were paid-ad leads that arrived as a bare LID in enforce.
+// Chatwoot got them, the chatbot sink threw until the receipt went dead, and n8n never ran.
+test('every delivery reaches the bot: phone, LID with phone and bare LID', async () => {
+  const aliases = new MemoryAliases();
+  const cases = [
+    { name: 'phone', key: { remoteJid: phone }, remoteJid: phone, senderLid: undefined, unresolved: false },
+    { name: 'LID + phone', key: { remoteJid: lid, remoteJidAlt: phone }, remoteJid: phone, senderLid: lid, unresolved: false },
+    { name: 'bare LID', key: { remoteJid: '150401332576367@lid' }, remoteJid: '150401332576367@lid', senderLid: undefined, unresolved: true },
+  ];
+  for (const delivery of cases) {
+    const address = await resolveDeliverableInboundAddress('manuela-tacomaq', delivery.key, aliases, async () => null);
+    assert.equal(address.remoteJid, delivery.remoteJid, delivery.name);
+    assert.equal(address.senderLid, delivery.senderLid, delivery.name);
+    assert.equal(address.unresolved instanceof UnresolvedInboundLidError, delivery.unresolved, delivery.name);
     const calls: string[] = [];
-    let unresolved: UnresolvedInboundLidError | undefined;
-    try {
-      await resolveInboundAddress('Taubaté', { remoteJid: lid }, aliases, async () => null);
-    } catch (error) {
-      assert.ok(error instanceof UnresolvedInboundLidError);
-      unresolved = error;
-    }
     await dispatchInboundChatbot({
-      unresolvedLid: unresolved,
-      receiptMode,
       attempt: async (operation) => { await operation(); return true; },
-      durable: async () => { calls.push(`n8n:${lid}`); },
-      bestEffort: async () => { calls.push(`best-effort:${lid}`); },
+      durable: async () => { calls.push(`n8n:${address.remoteJid}`); },
+      bestEffort: async () => { calls.push(`best-effort:${address.remoteJid}`); },
     });
-    assert.deepEqual(calls, [`n8n:${lid}`, `best-effort:${lid}`]);
+    assert.deepEqual(calls, [`n8n:${delivery.remoteJid}`, `best-effort:${delivery.remoteJid}`], delivery.name);
   }
 });
 
-test('enforce receipt retains unknown LID and retries after alias confirmation', async () => {
+test('a bare LID goes to the bot under the LID until the phone is known, then under the phone', async () => {
   const aliases = new MemoryAliases();
-  const calls: string[] = [];
-  let unresolved: UnresolvedInboundLidError | undefined;
-  try {
-    await resolveInboundAddress('Taubaté', { remoteJid: lid }, aliases, async () => null);
-  } catch (error) {
-    assert.ok(error instanceof UnresolvedInboundLidError);
-    unresolved = error;
-  }
-  let failed = false;
-  await dispatchInboundChatbot({
-    unresolvedLid: unresolved,
-    receiptMode: 'enforce',
-    attempt: async (operation) => {
-      try { await operation(); return true; }
-      catch (error) { assert.equal(error, unresolved); failed = true; return false; }
-    },
-    durable: async () => { calls.push('n8n'); },
-    bestEffort: async () => { calls.push('best-effort'); },
-  });
-  assert.equal(failed, true);
-  assert.deepEqual(calls, []);
-
+  const before = await resolveDeliverableInboundAddress('Taubaté', { remoteJid: lid }, aliases, async () => null);
+  assert.equal(before.remoteJid, lid);
+  assert.ok(before.unresolved);
   await resolveInboundAddress('Taubaté', { remoteJid: lid, remoteJidAlt: phone }, aliases);
-  const retry = await resolveInboundAddress('Taubaté', { remoteJid: lid }, aliases, async () => null);
-  await dispatchInboundChatbot({
-    receiptMode: 'enforce',
-    attempt: async (operation) => { await operation(); return true; },
-    durable: async () => { calls.push(`n8n:${retry.remoteJid}`); },
-    bestEffort: async () => { calls.push(`best-effort:${retry.remoteJid}`); },
-  });
-  assert.deepEqual(calls, [`n8n:${phone}`, `best-effort:${phone}`]);
+  assert.deepEqual(
+    await resolveDeliverableInboundAddress('Taubaté', { remoteJid: lid }, aliases, async () => null),
+    { remoteJid: phone, senderLid: lid },
+  );
+});
+
+test('an ambiguous LID is delivered as it came, never as a guessed phone', async () => {
+  const aliases = new MemoryAliases();
+  await resolveInboundAddress('Taubaté', { remoteJid: lid, remoteJidAlt: phone }, aliases);
+  const conflict = { remoteJid: lid, remoteJidAlt: '5511888888888@s.whatsapp.net' };
+  const address = await resolveDeliverableInboundAddress('Taubaté', conflict, aliases, async () => null);
+  assert.equal(address.remoteJid, lid);
+  assert.match(address.unresolved!.message, /ambiguous/);
+});
+
+test('store failures still reject instead of being delivered as unresolved', async () => {
+  const broken: LidPhoneAliasStore = {
+    confirm: async () => { throw new Error('db down'); },
+    find: async () => { throw new Error('db down'); },
+  };
+  await assert.rejects(
+    resolveDeliverableInboundAddress('Taubaté', { remoteJid: lid }, broken, async () => null),
+    /db down/,
+  );
 });
 
 test('the same message ID with and without alternate JID stays in one phone session', async () => {
