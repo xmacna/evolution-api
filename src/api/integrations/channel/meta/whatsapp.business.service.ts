@@ -371,7 +371,7 @@ export class BusinessStartupService extends ChannelStartupService {
     });
   }
 
-  private async downloadMediaMessage(message: any) {
+  private async downloadMediaMessage(message: any, strictBusinessAppMedia = false) {
     try {
       const id = message[message.type].id;
       let urlServer = this.configService.get<WaBusiness>('WA_BUSINESS').URL;
@@ -390,6 +390,7 @@ export class BusinessStartupService extends ChannelStartupService {
 
       return result.data;
     } catch (e) {
+      if (strictBusinessAppMedia) throw new Error('Business app media download failed');
       this.logger.error(`Error downloading media: ${e}`);
       throw e;
     }
@@ -1844,14 +1845,14 @@ export class BusinessStartupService extends ChannelStartupService {
     });
   }
 
-  public async getBase64FromMediaMessage(data: any) {
+  public async getBase64FromMediaMessage(data: any, strictBusinessAppMedia = false) {
     try {
       const msg = data.message;
       const messageType = msg.messageType.includes('Message') ? msg.messageType : msg.messageType + 'Message';
       const mediaMessage = msg.message[messageType];
 
       if (!msg.message?.base64) {
-        const buffer = await this.downloadMediaMessage({ type: messageType, ...msg.message });
+        const buffer = await this.downloadMediaMessage({ type: messageType, ...msg.message }, strictBusinessAppMedia);
         msg.message.base64 = buffer.toString('base64');
       }
 
@@ -1868,6 +1869,10 @@ export class BusinessStartupService extends ChannelStartupService {
         base64: msg.message.base64,
       };
     } catch (error) {
+      if (strictBusinessAppMedia) {
+        this.logger.error('Business app media processing failed');
+        throw new BadRequestException('Business app media processing failed');
+      }
       this.logger.error(error);
       throw new BadRequestException(error.toString());
     }

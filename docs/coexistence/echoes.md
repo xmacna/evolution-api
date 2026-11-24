@@ -50,7 +50,7 @@ In the constrained review environment, the same npm script ran with NODE_PATH po
 
 - Initial main preimage: 15 tests RED, including the unsafe empty payload and missing echo adapter/batch handling. Evidence: evidence/echo-red.txt.
 - Signature test before signature implementation: RED (unsigned POST returned 200 instead of 403). Evidence: evidence/signature-red.txt.
-- Current implementation: 43 tests GREEN. Evidence: evidence/echo-green.txt.
+- Current implementation: 44 tests GREEN. Evidence: evidence/echo-green.txt.
 - History media guard before its fix: RED (historical value.messages incorrectly reached live processing); evidence: evidence/history-guard-red.txt.
 - git diff --check passed. Full lint/typecheck/production engine run were unavailable: no complete repo dependencies, no Prettier/ESLint or Node 24 donor found. Local Node was 26.13.0 and existing esbuild 0.25.5; the repo declares Node 24 and esbuild 0.27.7. Tests are wired into the existing inbox CI command, but no CI result is claimed here.
 
@@ -71,12 +71,12 @@ POST /webhook/meta applies the standard middleware before HMAC and controller ef
 
 A further review caught a country-identity mismatch: the generic Baileys createJid helper transforms BR/MX/AR numbers. The Cloud service now preserves authoritative E.164 digits consistently in app echo, incoming messages, contacts and available status recipients. BR/MX/AR synthetic tests execute the real legacy utility as a control, and the real service uses a dedicated exact Cloud identity helper. Previously stored heuristic-based contacts/sessions are not migrated or merged by this PR; reconciling those records requires a separately reviewed migration, not fabricated country aliases. Source proof: the official echo/messages references identify to/from/recipient_id as the actual Cloud user phone values.
 
-Additional RED evidence: evidence/cloud-identity-red.txt and evidence/rate-limit-red.txt. Current evidence/echo-green.txt includes all 43 tests. The first CI did not pass; a subsequent full CI result must be read from the PR checks rather than inferred from these local tests.
+Additional RED evidence: evidence/cloud-identity-red.txt and evidence/rate-limit-red.txt. Current evidence/echo-green.txt includes all 44 tests. The first CI did not pass; a subsequent full CI result must be read from the PR checks rather than inferred from these local tests.
 
 
 ## Other app message types and future content
 
-Static location, shared contacts and reactions are now covered. Location reuses the existing pure location normalization and Portal renderer. Reactions reuse the message helper and display an outgoing Portuguese notice with the target message ID; absent emoji displays removal. Shared contacts display their names, optional phones/emails/sites/addresses/organization/birthday, including contacts without phones. The complete original payload remains in local contextInfo for these structured messages. They follow the same verified-pause and WAID mirror path and never create a live inbound or send a reaction/location/contact back to WhatsApp.
+Static location, shared contacts and reactions are now covered. Location reuses the existing pure location normalization and Portal renderer. Reactions reuse the message helper and display an outgoing Portuguese notice with the target message ID retained only in metadata; absent emoji displays removal. Shared contacts display their names, optional phones/emails/sites/addresses/organization/birthday, including contacts without phones. The complete original payload remains in local contextInfo for these structured messages. They follow the same verified-pause and WAID mirror path and never create a live inbound or send a reaction/location/contact back to WhatsApp.
 
 An authenticated phone-addressable echo whose presentation is unknown is stored durably as businessAppUnsupportedMessage before the verified pause. The Portal thread is resolved for binding, the real pause is verified, and the mirror fails explicitly while the payload remains pending. It is not silently discarded or acknowledged as complete. BSUID-only remains the separate identity block described above.
 
@@ -87,14 +87,14 @@ Official sources opened 2026-11-24:
 - https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/reaction-messages — message_id/emoji request example, fetched as public text/markdown after the web tool returned 429.
 - https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/reaction — full reaction and removal webhook examples, including omitted emoji, fetched as public text/markdown and read from the manager's RAM copy.
 
-Evidence/complex-echo-red.txt records the failing new cases before implementation; echo-green.txt includes the passing 43-case suite. Complex-content.json replaces all names/contacts/locations/IDs/addresses with synthetic values; it is combined with the official-derived echo envelope. Existing pinned Prettier 3.9.6 was fetched into private RAM, verified against package-lock's SHA-512 integrity, and used only on the changed source files. No formatter dependency or lock entry changed.
+Evidence/complex-echo-red.txt records the failing new cases before implementation; echo-green.txt includes the passing 44-case suite. Complex-content.json replaces all names/contacts/locations/IDs/addresses with synthetic values; it is combined with the official-derived echo envelope. Existing pinned Prettier 3.9.6 was fetched into private RAM, verified against package-lock's SHA-512 integrity, and used only on the changed source files. No formatter dependency or lock entry changed.
 
 
 ## Reconciled Portal ID semantics
 
 PostgreSQL bigint IDs arrive as strings, so every mirror acknowledgment now validates/converts message, inbox and display-conversation IDs to positive Prisma Int32 values. Invalid/nonintegral/overflow IDs fail rather than marking completion. A subsequent source review proved that Chatwoot API conversation IDs are per-account display_id, while messages.conversation_id is the internal FK. The echo-specific reconciliation now joins conversations and contacts, scopes account+inbox+source_id, verifies the recipient and returns display_id. Before asking for human pause, retry preparation reuses the existing source message's thread rather than creating a fresh one after a conversation was resolved. Legacy helper callers without this explicit scope retain their former path.
 
-Primary source opened 2026-11-24: xmacna/chatwoot app/models/message.rb (push_event_data), app/models/conversation.rb (database-generated display IDs), and API conversations base/direct-upload controllers. The PostgreSQL test deliberately uses internal IDs 101/202 with display_id 7 in two separate accounts and proves scope/recipient behavior with the actual import helper. It runs in the existing isolated PostgreSQL CI command, without starting an app or calling a production API. Evidence: display-id-red.txt, echo-postgres-green.txt and the 43-case echo-green.txt. Local PG16 was private, disposable and bound to loopback in RAM; no live database was accessed.
+Primary source opened 2026-11-24: xmacna/chatwoot app/models/message.rb (push_event_data), app/models/conversation.rb (database-generated display IDs), and API conversations base/direct-upload controllers. The PostgreSQL test deliberately uses internal IDs 101/202 with display_id 7 in two separate accounts and proves scope/recipient behavior with the actual import helper. It runs in the existing isolated PostgreSQL CI command, without starting an app or calling a production API. Evidence: display-id-red.txt, echo-postgres-green.txt and the 44-case echo-green.txt. Local PG16 was private, disposable and bound to loopback in RAM; no live database was accessed.
 
 A format that was initially retained as unsupported is not remapped automatically by the collision guard if parser support is added later. Re-presentation requires explicit reconciliation of that pending record; no live backfill is part of this change.
 
@@ -107,3 +107,6 @@ The two strict echo methods use an instance-scoped receiver for legacy Portal he
 
 
 Strict echo/history/state changes are accepted before ordinary asynchronous changes in a mixed batch. A failure that makes Meta retry the complete batch therefore does not launch ordinary work first. Relative order within each class is preserved. A controlled controller test reproduced the ordinary emission before a later echo failure, then passed with strict-first handling; this is not a global Cloud receipt/deduplication mechanism.
+
+
+App media calls use the strict download/base64 mode: only fixed messages are logged/propagated on failure, without raw Axios errors, URLs or authorization headers. The legacy mode remains unchanged for other callers. A synthetic Axios failure containing a clearly fake bearer value and URL reproduced the leak before this fix; media-secret-red.txt and the 44-case echo-green.txt record the result. Reaction notices show natural Portuguese text; the target ID is retained in API/local metadata rather than displayed to attendants.
