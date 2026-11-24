@@ -1,0 +1,33 @@
+✔ real PostgreSQL history import is idempotent under concurrency without API/Rails callbacks (138.172093ms)
+✔ historical data preserves existing live conversation state and late media updates one placeholder (55.835487ms)
+✔ new sync migration enforces per-instance generation, chunk identity and tenant foreign keys (61.192289ms)
+✖ real echo source reconciliation distinguishes internal/display IDs and equal display IDs in other accounts (68.845196ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 448.459547
+
+✖ failing tests:
+
+test at test/xmacna-meta-history.postgres.test.cjs:115:1
+✖ real echo source reconciliation distinguishes internal/display IDs and equal display IDs in other accounts (68.845196ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+    assert.ok(found)
+
+      at /dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-history.postgres.test.cjs:126:10
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async isolated (/dev/shm/evolution-meta-coexistence-20261124/test/xmacna-meta-history.postgres.test.cjs:43:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

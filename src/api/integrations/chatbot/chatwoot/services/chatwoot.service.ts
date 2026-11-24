@@ -1080,6 +1080,7 @@ export class ChatwootService {
     messageBody?: any,
     sourceId?: string,
     quotedMsg?: MessageModel,
+    strictBusinessAppEcho = false,
   ) {
     if (sourceId && this.isImportHistoryAvailable()) {
       const messageAlreadySaved = await chatwootImport.getExistingSourceIds([sourceId], conversationId);
@@ -1137,6 +1138,7 @@ export class ChatwootService {
 
       return data;
     } catch (error) {
+      if (strictBusinessAppEcho) throw error;
       this.logger.error(error);
       if (this.shouldSurfaceInboundFailure(instance)) throw error;
       return null;
@@ -1971,6 +1973,129 @@ export class ChatwootService {
     const messageContent = this.getMessageContent(types);
 
     return messageContent;
+  }
+
+  private async businessAppScope(instance: InstanceDto) {
+    const provider = await this.getProvider(instance);
+    if (!provider) throw new Error('Business app echo Portal provider unavailable');
+    // Legacy helpers use a mutable provider property. Keep their receiver local
+    // to this call so another instance cannot retarget an await continuation.
+    const scoped: ChatwootService = Object.create(this);
+    scoped.provider = provider;
+    scoped.getProvider = async () => provider;
+    const client = await scoped.clientCw(instance);
+    if (!client) throw new Error('Business app echo Portal client unavailable');
+    const inbox = await scoped.getInbox(instance);
+    if (!inbox?.id) throw new Error('Business app echo Portal inbox unavailable');
+    return { scoped, provider, client, inbox };
+  }
+
+  /** Resolve the Portal thread before the pause service validates account/inbox/contact binding. */
+  public async prepareBusinessAppEcho(instance: InstanceDto, body: any): Promise<number> {
+    if (body?.key?.fromMe !== true || !body.key.id) throw new Error('Invalid Business app echo');
+    if (!this.isImportHistoryAvailable()) throw new Error('Business app echo dedup reconciliation unavailable');
+    const { scoped, provider, inbox } = await this.businessAppScope(instance);
+    const existing = await chatwootImport.getExistingMessageBySourceId(`WAID:${body.key.id}`, undefined, {
+      accountId: provider.accountId,
+      inboxId: inbox.id,
+      recipientJid: body.key.remoteJid,
+    });
+    if (existing) {
+      const displayId = Number(existing.conversation_id);
+      if (!Number.isSafeInteger(displayId) || displayId < 1 || displayId > 2147483647) {
+        throw new Error('Business app echo Portal conversation acknowledgment ID invalid');
+      }
+      return displayId;
+    }
+    const conversationId = await scoped.createConversation(instance, body);
+    if (!conversationId) throw new Error('Business app echo Portal conversation unavailable');
+    return conversationId;
+  }
+
+  /**
+   * Strict app-echo mirror. Keep the WAID source guard used by the Chatwoot
+   * webhook to prevent retransmission, but never run the inbound/bot emitter.
+   * Reconcile after ambiguous POST failures before allowing Meta to retry.
+   */
+  public async mirrorBusinessAppEcho(instance: InstanceDto, body: any, preparedConversationId?: number) {
+    if (body?.key?.fromMe !== true || !body.key.id) throw new Error('Invalid Business app echo');
+    const conversationId = preparedConversationId || (await this.prepareBusinessAppEcho(instance, body));
+    const { scoped, provider, client, inbox } = await this.businessAppScope(instance);
+    const sourceId = `WAID:${body.key.id}`;
+    const reconcile = () =>
+      chatwootImport.getExistingMessageBySourceId(sourceId, conversationId, {
+        accountId: provider.accountId,
+        inboxId: inbox.id,
+        recipientJid: body.key.remoteJid,
+      });
+    const acknowledge = async (mirrored: any) => {
+      if (!mirrored?.id) throw new Error('Business app echo Portal acknowledgment empty');
+      const inboxId = mirrored.inbox_id || inbox.id;
+      if (!inboxId) throw new Error('Business app echo Portal inbox acknowledgment empty');
+      const ids = {
+        id: Number(mirrored.id),
+        inbox_id: Number(inboxId),
+        conversation_id: Number(mirrored.conversation_id || conversationId),
+      };
+      if (Object.values(ids).some((id) => !Number.isSafeInteger(id) || id < 1 || id > 2147483647)) {
+        throw new Error('Business app echo Portal acknowledgment ID invalid');
+      }
+      return { ...mirrored, ...ids };
+    };
+    const existing = await reconcile();
+    if (existing) return acknowledge(existing);
+    try {
+      let mirrored: any;
+      let content = body.message?.conversation;
+      if (body.messageType === 'locationMessage') {
+        content = this.getConversationMessage(body.message);
+        const sourceUrl = body.contextInfo?.businessAppPayload?.location?.url;
+        if (sourceUrl) content += `\n${sourceUrl}`;
+      } else if (body.messageType === 'reactionMessage') {
+        const reaction = body.message.reactionMessage;
+        content = reaction.text ? `Reagiu com ${reaction.text}` : 'Removeu a reação';
+      }
+      if (['conversation', 'locationMessage', 'reactionMessage'].includes(body.messageType)) {
+        mirrored = await client.messages.create({
+          accountId: Number(provider.accountId),
+          conversationId,
+          data: {
+            content,
+            message_type: 'outgoing',
+            private: false,
+            source_id: sourceId,
+            content_attributes:
+              body.messageType === 'reactionMessage'
+                ? { business_app_reaction_target_id: body.message.reactionMessage.key.id }
+                : undefined,
+          },
+        });
+      } else {
+        const waInstance = this.waMonitor.waInstances[instance.instanceName];
+        const media = await waInstance.getBase64FromMediaMessage({ message: body }, true);
+        if (!media?.base64 || !media?.mimetype) throw new Error('Business app echo media unavailable');
+        const stream = Readable.from(Buffer.from(media.base64, 'base64'));
+        const filename = media.fileName || `${body.key.id}.${mimeTypes.extension(media.mimetype) || 'bin'}`;
+        mirrored = await scoped.sendData(
+          conversationId,
+          stream,
+          filename,
+          'outgoing',
+          media.caption,
+          instance,
+          body,
+          sourceId,
+          undefined,
+          true,
+        );
+      }
+      if (!mirrored?.id) mirrored = await reconcile();
+      return await acknowledge(mirrored);
+    } catch (error) {
+      const accepted = await reconcile();
+      if (accepted) return acknowledge(accepted);
+      throw error;
+    }
   }
 
   public async eventWhatsapp(event: string, instance: InstanceDto, body: any) {

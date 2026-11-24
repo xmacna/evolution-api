@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "waba-local-a",
+      "changes": [
+        {
+          "field": "smb_message_echoes",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550000001",
+              "phone_number_id": "phone-local-a"
+            },
+            "contacts": [
+              {
+                "wa_id": "15550000002",
+                "user_id": "US.LOCAL.2"
+              }
+            ],
+            "message_echoes": [
+              {
+                "from": "15550000001",
+                "to": "15550000002",
+                "to_user_id": "US.LOCAL.2",
+                "id": "wamid.LOCAL.echo.1",
+                "timestamp": "1795500000",
+                "type": "text",
+                "text": {
+                  "body": "Synthetic app reply"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 import '@utils/instrumentSentry';
 
 // Now import other modules
+import { captureMetaRawBody } from '@api/integrations/channel/meta/meta-webhook-security';
 import { ProviderFiles } from '@api/provider/sessions';
 import { PrismaRepository } from '@api/repository/repository.service';
 import { HttpStatus, router } from '@api/routes/index.router';
@@ -60,7 +61,7 @@ async function bootstrap() {
       credentials: configService.get<Cors>('CORS').CREDENTIALS,
     }),
     urlencoded({ extended: true, limit: '136mb' }),
-    json({ limit: '136mb' }),
+    json({ limit: '136mb', verify: captureMetaRawBody }),
     compression(),
   );
 
