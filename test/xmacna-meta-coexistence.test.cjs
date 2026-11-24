@@ -201,7 +201,7 @@ function portalHarness(options = {}) {
   const { ChatwootService } = load('src/api/integrations/chatbot/chatwoot/services/chatwoot.service.ts', {
     '@api/integrations/chatbot/chatwoot/libs/postgres.client': { postgresClient: { getChatwootConnection: () => null } },
     '@api/integrations/chatbot/chatwoot/utils/chatwoot-import-helper': { chatwootImport: {
-      getExistingMessageBySourceId: async (...args) => { calls.reads.push(args); return existing && options.partialAck ? { id: existing.id } : existing; },
+      getExistingMessageBySourceId: async (...args) => { calls.reads.push(args); return existing && options.sqlIds ? Object.fromEntries(Object.entries(existing).map(([k,v]) => [k,String(v)])) : existing && options.partialAck ? { id: existing.id } : existing; },
       getExistingSourceIds: async () => new Set(existing ? ['WAID:wamid.LOCAL.echo.1'] : []),
     } },
     '@utils/i18n': { t: key => key }, 'dayjs': {}, 'long': {}, 'mime-types': { extension: () => 'jpg' }, 'baileys': {},
@@ -547,5 +547,21 @@ test('reaction removal without emoji is displayed faithfully and shared contacts
   const rendered = contacts.calls.portal[0][1].message.conversation;
   for (const expected of ['Synthetic Contact One', 'Synthetic Email-only Contact', 'second@example.invalid', 'Synthetic street', 'Synthetic department']) {
     assert.ok(rendered.includes(expected));
+  }
+});
+
+
+test('Portal reconciliation converts actual pg bigint string acknowledgments into Prisma Int IDs', async () => {
+  const h = portalHarness({ sqlIds: true }); const instance = { instanceName: 'local-a' };
+  await h.portal.mirrorBusinessAppEcho(instance, h.body);
+  const recovered = await h.portal.mirrorBusinessAppEcho(instance, h.body);
+  assert.equal(recovered.id, 91); assert.equal(recovered.inbox_id, 12); assert.equal(recovered.conversation_id, 34);
+  assert.equal(h.calls.creates.length, 1);
+});
+
+test('Portal acknowledgments reject nonnumeric, fractional and overflow IDs without a successful mirror', async () => {
+  for (const id of ['not-a-number', '2147483648', '1.5', '0', '-1']) {
+    const h = portalHarness(); h.portal.clientCw = async () => ({ messages: { create: async () => ({ id, inbox_id: 12, conversation_id: 34 }) } });
+    await assert.rejects(h.portal.mirrorBusinessAppEcho({ instanceName: 'local-a' }, h.body), /acknowledgment.*invalid/i);
   }
 });
