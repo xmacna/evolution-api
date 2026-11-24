@@ -2053,19 +2053,26 @@ export class ChatwootService {
         if (sourceUrl) content += `\n${sourceUrl}`;
       } else if (body.messageType === 'reactionMessage') {
         const reaction = body.message.reactionMessage;
-        content = reaction.text
-          ? `Reação ${reaction.text} à mensagem ${reaction.key.id}`
-          : `Reação removida da mensagem ${reaction.key.id}`;
+        content = reaction.text ? `Reagiu com ${reaction.text}` : 'Removeu a reação';
       }
       if (['conversation', 'locationMessage', 'reactionMessage'].includes(body.messageType)) {
         mirrored = await client.messages.create({
           accountId: provider.accountId,
           conversationId,
-          data: { content, message_type: 'outgoing', private: false, source_id: sourceId },
+          data: {
+            content,
+            message_type: 'outgoing',
+            private: false,
+            source_id: sourceId,
+            content_attributes:
+              body.messageType === 'reactionMessage'
+                ? { business_app_reaction_target_id: body.message.reactionMessage.key.id }
+                : undefined,
+          },
         });
       } else {
         const waInstance = this.waMonitor.waInstances[instance.instanceName];
-        const media = await waInstance.getBase64FromMediaMessage({ message: body });
+        const media = await waInstance.getBase64FromMediaMessage({ message: body }, true);
         if (!media?.base64 || !media?.mimetype) throw new Error('Business app echo media unavailable');
         const stream = Readable.from(Buffer.from(media.base64, 'base64'));
         const filename = media.fileName || `${body.key.id}.${mimeTypes.extension(media.mimetype) || 'bin'}`;

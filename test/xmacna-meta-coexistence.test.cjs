@@ -527,13 +527,15 @@ test('unknown signed app content is durably retained and verified human pause ha
 test('actual Portal echo adapter renders location and reaction as outgoing notices, never media or WhatsApp sends', async () => {
   const examples = [
     { messageType: 'locationMessage', message: { locationMessage: { degreesLatitude: 0, degreesLongitude: 0, name: 'Synthetic point' } }, expected: /0,0/ },
-    { messageType: 'reactionMessage', message: { reactionMessage: { key: { id: 'wamid.LOCAL.target' }, text: '😀' } }, expected: /😀.*wamid.LOCAL.target/ },
+    { messageType: 'reactionMessage', message: { reactionMessage: { key: { id: 'wamid.LOCAL.target' }, text: '😀' } }, expected: /Reagiu com 😀/ },
   ];
   for (const example of examples) {
     const h = portalHarness(); Object.assign(h.body, example);
     await h.portal.mirrorBusinessAppEcho({ instanceName: 'local-a' }, h.body);
     assert.equal(h.calls.creates.length, 1); assert.equal(h.calls.media.length, 0);
     assert.match(h.calls.creates[0].data.content, example.expected);
+    assert.ok(!h.calls.creates[0].data.content.includes('wamid.'));
+    if (example.messageType === 'reactionMessage') assert.equal(h.calls.creates[0].data.content_attributes.business_app_reaction_target_id, 'wamid.LOCAL.target');
     assert.equal(h.calls.creates[0].data.source_id, 'WAID:wamid.LOCAL.echo.1');
   }
 });
@@ -544,7 +546,8 @@ test('reaction removal without emoji is displayed faithfully and shared contacts
   echo.type = 'reaction'; delete echo.text; echo.reaction = { message_id: 'wamid.LOCAL.target' };
   const portal = portalHarness(); h.service.chatwootService = portal.portal;
   await h.service.connectToWhatsapp(p);
-  assert.match(portal.calls.creates[0].data.content, /Reação removida.*wamid.LOCAL.target/);
+  assert.equal(portal.calls.creates[0].data.content, 'Removeu a reação');
+  assert.equal(portal.calls.creates[0].data.content_attributes.business_app_reaction_target_id, 'wamid.LOCAL.target');
   const contacts = harness(); const c = fixture('echo-text'); const ce = value(c).message_echoes[0];
   ce.type = 'contacts'; delete ce.text; ce.contacts = fixture('complex-content').contacts;
   await contacts.service.connectToWhatsapp(c);
@@ -630,4 +633,26 @@ test('a strict failure in a mixed Meta batch does not launch ordinary inbound wo
   const packet = fixture('inbound-text'); packet.entry[0].changes.push(...fixture('echo-text').entry[0].changes);
   await assert.rejects(controller.receiveWebhook(packet), /verified pause unavailable/);
   assert.equal(ordinary.length, 0);
+});
+
+test('strict app media failures never log or return Axios headers, URLs or secret values', async () => {
+  const logs = []; const secret = 'SYNTHETIC_META_SECRET';
+  const failure = Object.assign(new Error('synthetic download failure'), {
+    config: { headers: { Authorization: 'Bearer ' + secret }, url: 'https://media.local.invalid?access_token=' + secret },
+    response: { status: 503 },
+  });
+  failure.toString = () => failure.message + JSON.stringify(failure.config);
+  const { BusinessStartupService } = load('src/api/integrations/channel/meta/whatsapp.business.service.ts', {
+    axios: { get: async () => { throw failure; } },
+  });
+  const service = Object.create(BusinessStartupService.prototype);
+  service.configService = { get: () => ({ URL: 'https://graph.local.invalid', VERSION: 'v-local' }) };
+  service.token = secret; service.logger = { error: message => logs.push(message) };
+  await assert.rejects(service.getBase64FromMediaMessage({ message: { messageType: 'imageMessage', message: {
+    imageMessage: { id: 'media-local', mime_type: 'image/jpeg' },
+  } } }, true), error => {
+    assert.equal(error.message, 'Business app media processing failed'); return true;
+  });
+  assert.ok(!JSON.stringify(logs).includes(secret)); assert.ok(!JSON.stringify(logs).includes('https://'));
+  assert.ok(!JSON.stringify(logs).includes('Authorization'));
 });
