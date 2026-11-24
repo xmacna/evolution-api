@@ -154,7 +154,11 @@ import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
 import { BaileysMessageProcessor } from './baileysMessage.processor';
-import { PrismaLidPhoneAliasStore, resolveInboundAddress, UnresolvedInboundLidError } from './inboundIdentity';
+import {
+  PrismaLidPhoneAliasStore,
+  resolveDeliverableInboundAddress,
+  UnresolvedInboundLidError,
+} from './inboundIdentity';
 import {
   classifyInboundMessage,
   inboundPayloadHash,
@@ -926,12 +930,13 @@ export class BaileysStartupService extends ChannelStartupService {
       });
 
       const recoveredChatbot = await attempt('chatbot', item.chatbotState, async () => {
-        const recoveredAddress = await resolveInboundAddress(
+        const recoveredAddress = await resolveDeliverableInboundAddress(
           this.instance.name,
           messageRaw.key,
           this.lidPhoneAliases,
           (lid) => this.client.signalRepository.lidMapping.getPNForLID(lid),
         );
+        if (recoveredAddress.unresolved) this.logUnresolvedInboundLid(recoveredAddress.unresolved, 'recovery');
         if (recoveredAddress.senderLid) {
           messageRaw.key.senderLid = recoveredAddress.senderLid;
           messageRaw.key.remoteJidAlt = recoveredAddress.remoteJid;
@@ -980,6 +985,19 @@ export class BaileysStartupService extends ChannelStartupService {
     } finally {
       clearInterval(heartbeat);
     }
+  }
+
+  // `info`, not `warn`: the default runs LOG_LEVEL=INFO, which drops warn (xmacna/elysium#1495).
+  private logUnresolvedInboundLid(error: UnresolvedInboundLidError, inboxMode: string): void {
+    this.logger.info(
+      JSON.stringify({
+        event: 'unresolved_inbound_lid',
+        instance: this.instance.name,
+        inboxMode,
+        delivery: 'lid',
+        reason: error.message,
+      }),
+    );
   }
 
   private async markActiveInboundSink(
@@ -1557,30 +1575,20 @@ export class BaileysStartupService extends ChannelStartupService {
           }
           let unresolvedInboundLid: UnresolvedInboundLidError | undefined;
           if (!received.key.fromMe) {
-            try {
-              const resolvedAddress = await resolveInboundAddress(
-                this.instance.name,
-                messageRaw.key,
-                this.lidPhoneAliases,
-                (lid) => this.client.signalRepository.lidMapping.getPNForLID(lid),
-              );
-              inboundContactScope = normalizeContactScope(resolvedAddress.remoteJid);
-              if (resolvedAddress.senderLid) {
-                messageRaw.key.senderLid = resolvedAddress.senderLid;
-                messageRaw.key.remoteJidAlt = resolvedAddress.remoteJid;
-              }
-            } catch (error) {
-              if (!(error instanceof UnresolvedInboundLidError)) throw error;
-              unresolvedInboundLid = error;
-              inboundContactScope = normalizeContactScope(messageRaw.key.remoteJid);
-              this.logger.warn(
-                JSON.stringify({
-                  event: 'unresolved_inbound_lid',
-                  instance: this.instance.name,
-                  inboxMode: inboundMode,
-                  reason: error.message,
-                }),
-              );
+            const resolvedAddress = await resolveDeliverableInboundAddress(
+              this.instance.name,
+              messageRaw.key,
+              this.lidPhoneAliases,
+              (lid) => this.client.signalRepository.lidMapping.getPNForLID(lid),
+            );
+            inboundContactScope = normalizeContactScope(resolvedAddress.remoteJid);
+            if (resolvedAddress.senderLid) {
+              messageRaw.key.senderLid = resolvedAddress.senderLid;
+              messageRaw.key.remoteJidAlt = resolvedAddress.remoteJid;
+            }
+            if (resolvedAddress.unresolved) {
+              unresolvedInboundLid = resolvedAddress.unresolved;
+              this.logUnresolvedInboundLid(resolvedAddress.unresolved, inboundMode);
             }
           }
           let durableMessageRecordId: string | undefined;
@@ -1986,8 +1994,6 @@ export class BaileysStartupService extends ChannelStartupService {
           });
 
           await dispatchInboundChatbot({
-            unresolvedLid: unresolvedInboundLid,
-            receiptMode: activeReceipt ? activeInboundMode : undefined,
             attempt: (operation) => attemptActiveSink('chatbot', operation),
             durable: () =>
               chatbotController.emitDurableInbound({

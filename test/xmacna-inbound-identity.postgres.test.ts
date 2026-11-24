@@ -8,9 +8,13 @@ import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
 
 import { buildChatbotDebounceKey, processChatbotDebounce } from '../src/api/integrations/chatbot/chatbotDebounce';
-import { PrismaLidPhoneAliasStore, resolveInboundAddress } from '../src/api/integrations/channel/whatsapp/inboundIdentity';
+import {
+  PrismaLidPhoneAliasStore,
+  resolveDeliverableInboundAddress,
+  resolveInboundAddress,
+} from '../src/api/integrations/channel/whatsapp/inboundIdentity';
 import { inboundPayloadHash, normalizeContactScope, normalizeInstanceScope, PrismaInboundInbox } from '../src/api/integrations/channel/whatsapp/inboundInbox';
-import { attemptDurableInboundSink } from '../src/api/integrations/channel/whatsapp/inboundSinkDispatch';
+import { attemptDurableInboundSink, dispatchInboundChatbot } from '../src/api/integrations/channel/whatsapp/inboundSinkDispatch';
 import { resetAmbiguousAlias } from '../src/cli/inboundInboxMaintenance';
 
 const enabled = process.env.XMACNA_INBOX_INTEGRATION === '1';
@@ -126,7 +130,9 @@ test('concurrent conflicting confirmations poison an instance alias durably', { 
   }
 });
 
-test('unknown LID keeps human sinks and receipt, then replays chatbot after confirmation', { skip: !enabled }, async () => {
+// xmacna/elysium#1495: holding the chatbot sink for an unknown LID in enforce ended in `dead`
+// receipts and unanswered leads (Tacomaq #614/#617). The bot now gets the LID right away.
+test('unknown LID in enforce reaches the chatbot under the LID and the receipt is done', { skip: !enabled }, async () => {
   const client = new PrismaClient();
   const instanceName = `mar229-unresolved-${randomUUID()}`;
   const instanceId = instanceName;
@@ -139,11 +145,12 @@ test('unknown LID keeps human sinks and receipt, then replays chatbot after conf
     await client.$connect();
     await client.instance.create({ data: { id: instanceId, name: instanceName, inboundInboxMode: 'enforce' } });
     const first = { key: { id: 'wamid-unknown', remoteJid: lid, fromMe: false }, message: { conversation: 'first' } };
-    const unresolved = await resolveInboundAddress(instanceName, first.key, aliases, async () => null).catch((error) => error);
-    assert.match(unresolved.message, /unknown/);
+    const address = await resolveDeliverableInboundAddress(instanceName, first.key, aliases, async () => null);
+    assert.equal(address.remoteJid, lid);
+    assert.match(address.unresolved!.message, /unknown/);
     const claim = await inbox.claim({
       sourceCluster, instanceScope, instanceId, messageId: first.key.id,
-      contactScope: normalizeContactScope(lid), classification: 'real', payloadHash: inboundPayloadHash(first as any),
+      contactScope: normalizeContactScope(address.remoteJid), classification: 'real', payloadHash: inboundPayloadHash(first as any),
       leaseOwner: 'first-worker', messageData: {
         key: first.key, message: first.message, messageType: 'conversation', messageTimestamp: 1,
         source: 'unknown', instanceId,
@@ -156,45 +163,25 @@ test('unknown LID keeps human sinks and receipt, then replays chatbot after conf
       const failure = await attemptDurableInboundSink({ sink, operation: async () => { delivered.push(sink); return 'sent'; }, mark });
       assert.equal(failure, undefined);
     }
-    const failed = await attemptDurableInboundSink({
-      sink: 'chatbot', operation: async () => { throw unresolved; }, mark,
+    await dispatchInboundChatbot({
+      attempt: async (operation) =>
+        (await attemptDurableInboundSink({ sink: 'chatbot', operation, mark })) === undefined,
+      durable: async () => { delivered.push(`n8n:${address.remoteJid}`); },
+      bestEffort: async () => { delivered.push('best-effort'); },
     });
-    assert.equal(failed?.sink, 'chatbot');
-    assert.deepEqual(delivered, ['chatwoot', 'webhook']);
-    assert.equal(await inbox.markFailed(claim.receiptId, 'first-worker', claim.leaseToken!, failed?.error, 10, 0), true);
+    assert.deepEqual(delivered, ['chatwoot', 'webhook', `n8n:${lid}`, 'best-effort']);
+    assert.equal(await inbox.markDone(claim.receiptId, 'first-worker', claim.leaseToken!), true);
+    const receipt = await client.inboundReceipt.findUniqueOrThrow({ where: { id: claim.receiptId } });
+    assert.equal(receipt.state, 'done');
+    assert.equal(receipt.chatbotState, 'sent');
+    assert.equal(await inbox.leaseNext(sourceCluster, instanceScope, 'replay-worker', 30, 10), null);
 
-    // A second message in the same batch can still be claimed and delivered.
-    const second = await inbox.claim({
-      sourceCluster, instanceScope, instanceId, messageId: 'wamid-next',
-      contactScope: normalizeContactScope(lid), classification: 'real', payloadHash: inboundPayloadHash({ message: { conversation: 'next' } } as any),
-      leaseOwner: 'second-worker', messageData: {
-        key: { id: 'wamid-next', remoteJid: lid, fromMe: false }, message: { conversation: 'next' },
-        messageType: 'conversation', messageTimestamp: 2, source: 'unknown', instanceId,
-      },
-    }, 'enforce');
-    assert.equal(second.shouldDispatch, true);
-    for (const sink of ['chatwoot', 'webhook'] as const) {
-      assert.equal(await inbox.markSink(second.receiptId, sink, 'sent', 'second-worker', second.leaseToken!), true);
-    }
-    assert.equal(await inbox.markSink(second.receiptId, 'chatbot', 'failed', 'second-worker', second.leaseToken!), true);
-    assert.equal(await inbox.markFailed(second.receiptId, 'second-worker', second.leaseToken!, unresolved, 10, 0), true);
-
+    // Once the phone is confirmed, the next LID-only message is delivered under the phone.
     await aliases.confirm(instanceScope, lid, phone);
-    const replay = await inbox.leaseNext(sourceCluster, instanceScope, 'replay-worker', 30, 10);
-    assert.equal(replay?.receiptId, claim.receiptId);
-    assert.equal(replay?.chatwootState, 'sent');
-    assert.equal(replay?.webhookState, 'sent');
-    assert.equal(replay?.chatbotState, 'failed');
-    const resolved = await resolveInboundAddress(instanceName, (replay!.message as any).key, aliases, async () => null);
-    assert.deepEqual(resolved, { remoteJid: phone, senderLid: lid });
-    assert.equal(await inbox.markSink(replay!.receiptId, 'chatbot', 'sent', 'replay-worker', replay!.leaseToken), true);
-    assert.equal(await inbox.markDone(replay!.receiptId, 'replay-worker', replay!.leaseToken), true);
-    const secondReplay = await inbox.leaseNext(sourceCluster, instanceScope, 'replay-worker', 30, 10);
-    assert.equal(secondReplay?.receiptId, second.receiptId);
-    assert.deepEqual(await resolveInboundAddress(instanceName, (secondReplay!.message as any).key, aliases), { remoteJid: phone, senderLid: lid });
-    assert.equal(await inbox.markSink(secondReplay!.receiptId, 'chatbot', 'sent', 'replay-worker', secondReplay!.leaseToken), true);
-    assert.equal(await inbox.markDone(secondReplay!.receiptId, 'replay-worker', secondReplay!.leaseToken), true);
-    assert.equal(await client.inboundReceipt.count({ where: { sourceCluster, instanceScope, state: 'done' } }), 2);
+    assert.deepEqual(
+      await resolveDeliverableInboundAddress(instanceName, { remoteJid: lid }, aliases, async () => null),
+      { remoteJid: phone, senderLid: lid },
+    );
   } finally {
     await client.inboundReceipt.deleteMany({ where: { sourceCluster, instanceScope } });
     await client.message.deleteMany({ where: { instanceId } });
