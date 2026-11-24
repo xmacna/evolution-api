@@ -117,3 +117,25 @@ export async function resolveInboundAddress(
   if (!storedPhone || !PHONE_JID.test(storedPhone)) throw new UnresolvedInboundLidError('unknown');
   return { remoteJid: storedPhone, senderLid: lid };
 }
+
+export type DeliverableInboundAddress = ResolvedInboundAddress & { unresolved?: UnresolvedInboundLidError };
+
+/**
+ * Address used to deliver an inbound message to the bot. A LID with no known phone is delivered
+ * under the LID itself instead of being held: holding it in enforce left paid-ad leads unanswered
+ * (xmacna/elysium#1495, Tacomaq #614/#617), and in 6 of 6 production cases the phone never showed
+ * up during the receipt's retry window. The bot replies to the LID, which is a valid destination.
+ */
+export async function resolveDeliverableInboundAddress(
+  instanceName: string,
+  address: InboundAddress,
+  aliases: LidPhoneAliasStore,
+  getPhoneForLid?: (lidJid: string) => Promise<string | null | undefined>,
+): Promise<DeliverableInboundAddress> {
+  try {
+    return await resolveInboundAddress(instanceName, address, aliases, getPhoneForLid);
+  } catch (error) {
+    if (!(error instanceof UnresolvedInboundLidError)) throw error;
+    return { remoteJid: address.remoteJid, unresolved: error };
+  }
+}
