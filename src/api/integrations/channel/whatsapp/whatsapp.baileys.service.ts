@@ -925,18 +925,30 @@ export class BaileysStartupService extends ChannelStartupService {
         return 'sent';
       });
 
+      let recoveredAsLid = false;
       const recoveredChatbot = await attempt('chatbot', item.chatbotState, async () => {
-        const recoveredAddress = await resolveInboundAddress(
-          this.instance.name,
-          messageRaw.key,
-          this.lidPhoneAliases,
-          (lid) => this.client.signalRepository.lidMapping.getPNForLID(lid),
-        );
-        if (recoveredAddress.senderLid) {
-          messageRaw.key.senderLid = recoveredAddress.senderLid;
-          messageRaw.key.remoteJidAlt = recoveredAddress.remoteJid;
+        try {
+          const recoveredAddress = await resolveInboundAddress(
+            this.instance.name,
+            messageRaw.key,
+            this.lidPhoneAliases,
+            (lid) => this.client.signalRepository.lidMapping.getPNForLID(lid),
+          );
+          if (recoveredAddress.senderLid) {
+            messageRaw.key.senderLid = recoveredAddress.senderLid;
+            messageRaw.key.remoteJidAlt = recoveredAddress.remoteJid;
+          }
+          messageRaw.key.remoteJid = recoveredAddress.remoteJid;
+        } catch (error) {
+          if (!(error instanceof UnresolvedInboundLidError)) throw error;
+          const lid = messageRaw.key.remoteJid.endsWith('@lid')
+            ? messageRaw.key.remoteJid
+            : messageRaw.key.remoteJidAlt;
+          if (!lid?.endsWith('@lid')) throw error;
+          messageRaw.key.remoteJid = lid;
+          messageRaw.key.senderLid = lid;
+          recoveredAsLid = true;
         }
-        messageRaw.key.remoteJid = recoveredAddress.remoteJid;
         await chatbotController.emitDurableInbound({
           instance: { instanceName: this.instance.name, instanceId: this.instanceId },
           remoteJid: messageRaw.key.remoteJid,
@@ -946,6 +958,11 @@ export class BaileysStartupService extends ChannelStartupService {
         return 'sent';
       });
       if (recoveredChatbot === 'succeeded') {
+        if (recoveredAsLid) {
+          this.logger.warn(
+            JSON.stringify({ event: 'unresolved_inbound_lid_delivered_as_lid', mode: 'enforce', sink: 'chatbot' }),
+          );
+        }
         await chatbotController.emitBestEffortInbound({
           instance: { instanceName: this.instance.name, instanceId: this.instanceId },
           remoteJid: messageRaw.key.remoteJid,
@@ -1986,6 +2003,11 @@ export class BaileysStartupService extends ChannelStartupService {
           });
 
           await dispatchInboundChatbot({
+            messageKey: messageRaw.key,
+            onUnresolvedLidDelivered: () =>
+              this.logger.warn(
+                JSON.stringify({ event: 'unresolved_inbound_lid_delivered_as_lid', mode: 'enforce', sink: 'chatbot' }),
+              ),
             unresolvedLid: unresolvedInboundLid,
             receiptMode: activeReceipt ? activeInboundMode : undefined,
             attempt: (operation) => attemptActiveSink('chatbot', operation),
